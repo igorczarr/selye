@@ -1,0 +1,88 @@
+@import "tailwindcss";
+
+/* SELYE — Manual de Identidade Visual v1.0 (tokens) */
+:root {
+  --grafite: #202a27;
+  --noite: #151c1a;
+  --mineral: #71877a;
+  --profundo: #566e61;
+  --lima: #c7d977;
+  --osso: #f3f2ec;
+  --branco: #ffffff;
+  --nevoa: #aab2aa;
+  --borda: #dde2da;
+  --texto-2: #68746d;
+
+  --background: var(--osso);
+  --foreground: var(--grafite);
+  --surface: var(--branco);
+  --muted: var(--texto-2);
+  --accent-text: var(--profundo);
+  --border: var(--borda);
+}
+
+/* Tema escuro: base Noite, texto Osso, secundário Névoa */
+[data-theme="dark"] {
+  --background: var(--noite);
+  --foreground: var(--osso);
+  --surface: var(--grafite);
+  --muted: var(--nevoa);
+  --accent-text: var(--mineral);
+  --border: #2c3733;
+}
+
+@theme inline {
+  --color-grafite: var(--grafite);
+  --color-noite: var(--noite);
+  --color-mineral: var(--mineral);
+  --color-profundo: var(--profundo);
+  --color-lima: var(--lima);
+  --color-osso: var(--osso);
+  --color-nevoa: var(--nevoa);
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-surface: var(--surface);
+  --color-muted: var(--muted);
+  --color-accent-text: var(--accent-text);
+  --color-line: var(--border);
+  --font-sans: var(--font-inter), system-ui, sans-serif;
+  --font-mono: var(--font-plex-mono), ui-monospace, monospace;
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 14px;
+  --spacing: 8px; /* grid de 8 px */
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-family: var(--font-sans);
+  font-size: 15px;
+  line-height: 22px;
+  font-weight: 400;
+}
+
+/* Hierarquia de interface (manual §05) */
+.t-h1 { font-size: 28px; line-height: 34px; font-weight: 600; }
+.t-h2 { font-size: 22px; line-height: 28px; font-weight: 600; }
+.t-h3 { font-size: 18px; line-height: 24px; font-weight: 600; }
+.t-aux { font-size: 12px; line-height: 16px; font-weight: 500; }
+/* Dados e metadados: IBM Plex Mono, números tabulares */
+.t-data {
+  font-family: var(--font-mono);
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+}
+.t-label {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  line-height: 16px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+:focus-visible {
+  outline: 2px solid var(--profundo);
+  outline-offset: 2px;
+}
