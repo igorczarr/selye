@@ -6,6 +6,8 @@ import { eq, desc } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { getOrCreateDemoUser } from "./workout";
 
+import { getUserAchievements, getAchievementsCatalog } from "./achievements";
+
 export async function getProfileData() {
   const user = await getOrCreateDemoUser();
 
@@ -37,12 +39,24 @@ export async function getProfileData() {
 
   const allAvailableSports = await db.select().from(schema.sports);
 
+  const [streak] = await db
+    .select()
+    .from(schema.streaks)
+    .where(eq(schema.streaks.userId, user.id))
+    .limit(1);
+
+  const userAchievements = await getUserAchievements(user.id);
+  const achievementsCatalog = await getAchievementsCatalog();
+
   return {
     user,
     profile,
     metrics,
     userSportsList,
     allAvailableSports,
+    streak: streak || null,
+    userAchievements,
+    achievementsCatalog,
   };
 }
 

@@ -250,3 +250,76 @@ export async function duplicateRoutine(programId: string) {
   revalidatePath("/treinos");
   return newProgram;
 }
+
+/**
+ * Retorna dados detalhados da ficha formatados para impressão / exportação PDF (§18)
+ */
+export async function getRoutineForPrint(programId: string) {
+  const [program] = await db
+    .select()
+    .from(schema.trainingPrograms)
+    .where(eq(schema.trainingPrograms.id, programId))
+    .limit(1);
+
+  if (!program) return null;
+
+  const [creator] = await db
+    .select({ name: schema.users.name, username: schema.users.username })
+    .from(schema.users)
+    .where(eq(schema.users.id, program.creatorUserId))
+    .limit(1);
+
+  const [curVersion] = await db
+    .select()
+    .from(schema.programVersions)
+    .where(
+      and(
+        eq(schema.programVersions.programId, program.id),
+        eq(schema.programVersions.isCurrent, true)
+      )
+    )
+    .limit(1);
+
+  if (!curVersion) return null;
+
+  const templates = await db
+    .select()
+    .from(schema.workoutTemplates)
+    .where(eq(schema.workoutTemplates.programVersionId, curVersion.id));
+
+  const templatesWithDetails = await Promise.all(
+    templates.map(async (t) => {
+      const prescriptions = await db
+        .select({
+          id: schema.templatePrescriptions.id,
+          orderIndex: schema.templatePrescriptions.orderIndex,
+          targetSets: schema.templatePrescriptions.targetSets,
+          targetReps: schema.templatePrescriptions.targetReps,
+          targetLoadKg: schema.templatePrescriptions.targetLoadKg,
+          targetRpe: schema.templatePrescriptions.targetRpe,
+          restSeconds: schema.templatePrescriptions.restSeconds,
+          setType: schema.templatePrescriptions.setType,
+          notes: schema.templatePrescriptions.notes,
+          exerciseNamePt: schema.exercises.namePt,
+          exerciseNameEn: schema.exercises.nameEn,
+          instructionsPt: schema.exercises.instructionsPt,
+        })
+        .from(schema.templatePrescriptions)
+        .innerJoin(schema.exercises, eq(schema.templatePrescriptions.exerciseId, schema.exercises.id))
+        .where(eq(schema.templatePrescriptions.templateId, t.id))
+        .orderBy(schema.templatePrescriptions.orderIndex);
+
+      return {
+        ...t,
+        prescriptions,
+      };
+    })
+  );
+
+  return {
+    program,
+    creator,
+    version: curVersion,
+    templates: templatesWithDetails,
+  };
+}

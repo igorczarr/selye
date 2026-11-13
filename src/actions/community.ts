@@ -107,6 +107,51 @@ export async function addComment(postId: string, contentText: string, parentComm
  * Retorna o Feed com suporte a filtragem por tipo e dados de sessão vinculada
  */
 export async function getCommunityFeed(filter: "following" | "teams" | "explore" = "explore") {
+  const currentUser = await getOrCreateDemoUser();
+
+  // 1. Obter lista de usuários bloqueados
+  const blockedRows = await db
+    .select({ blockedId: schema.userBlocks.blockedUserId })
+    .from(schema.userBlocks)
+    .where(eq(schema.userBlocks.blockerUserId, currentUser.id));
+
+  const blockedUserIds = new Set(blockedRows.map((r) => r.blockedId));
+
+  const blockedByRows = await db
+    .select({ blockerId: schema.userBlocks.blockerUserId })
+    .from(schema.userBlocks)
+    .where(eq(schema.userBlocks.blockedUserId, currentUser.id));
+
+  for (const r of blockedByRows) {
+    blockedUserIds.add(r.blockerId);
+  }
+
+  // 2. IDs seguidos
+  const followingRows = await db
+    .select({ followingId: schema.follows.followingId })
+    .from(schema.follows)
+    .where(
+      and(
+        eq(schema.follows.followerId, currentUser.id),
+        eq(schema.follows.status, "accepted")
+      )
+    );
+  const followingUserIds = new Set(followingRows.map((r) => r.followingId));
+  followingUserIds.add(currentUser.id); // Sempre inclui a si mesmo
+
+  // 3. Equipes do usuário
+  const userTeamRows = await db
+    .select({ teamId: schema.teamMemberships.teamId })
+    .from(schema.teamMemberships)
+    .where(
+      and(
+        eq(schema.teamMemberships.userId, currentUser.id),
+        eq(schema.teamMemberships.status, "active")
+      )
+    );
+  const userTeamIds = new Set(userTeamRows.map((r) => r.teamId));
+
+  // 4. Buscar publicações
   const posts = await db
     .select({
       id: schema.posts.id,
@@ -127,30 +172,43 @@ export async function getCommunityFeed(filter: "following" | "teams" | "explore"
     .from(schema.posts)
     .innerJoin(schema.users, eq(schema.posts.userId, schema.users.id))
     .orderBy(desc(schema.posts.createdAt))
-    .limit(20);
+    .limit(40);
+
+  // Filtrar bloqueados
+  let visiblePosts = posts.filter((p) => !blockedUserIds.has(p.userId));
+
+  // Aplicar filtro de abas (§11.1)
+  if (filter === "following") {
+    visiblePosts = visiblePosts.filter((p) => followingUserIds.has(p.userId));
+  } else if (filter === "teams") {
+    visiblePosts = visiblePosts.filter((p) => p.teamId && userTeamIds.has(p.teamId));
+  }
 
   const enrichedPosts = await Promise.all(
-    posts.map(async (p) => {
+    visiblePosts.map(async (p) => {
       // Reações
       const postReactions = await db
         .select()
         .from(schema.reactions)
         .where(eq(schema.reactions.postId, p.id));
 
-      // Comentários
+      const userReaction = postReactions.find((r) => r.userId === currentUser.id);
+
+      // Comentários (com suporte a comentários aninhados)
       const postComments = await db
         .select({
           id: schema.comments.id,
+          parentCommentId: schema.comments.parentCommentId,
           contentText: schema.comments.contentText,
           createdAt: schema.comments.createdAt,
           authorName: schema.users.name,
           authorUsername: schema.users.username,
+          authorAvatar: schema.users.avatarUrl,
         })
         .from(schema.comments)
         .innerJoin(schema.users, eq(schema.comments.userId, schema.users.id))
         .where(eq(schema.comments.postId, p.id))
-        .orderBy(desc(schema.comments.createdAt))
-        .limit(5);
+        .orderBy(schema.comments.createdAt);
 
       // Dados do treino se for relatório de treino (§11.3)
       let workoutReport = null;
@@ -183,6 +241,7 @@ export async function getCommunityFeed(filter: "following" | "teams" | "explore"
 
       return {
         ...p,
+        userReaction: userReaction?.reactionType || null,
         reactions: postReactions,
         comments: postComments,
         workoutReport,

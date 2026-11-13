@@ -12,6 +12,7 @@ import {
   Shield,
   Settings,
   PlusCircle,
+  Activity,
 } from "lucide-react";
 
 export function Navbar() {
@@ -20,6 +21,7 @@ export function Navbar() {
   const navLinks = [
     { label: "Início", href: "/", icon: Home },
     { label: "Treinos", href: "/treinos", icon: Dumbbell },
+    { label: "Performance", href: "/performance", icon: Activity },
     { label: "Comunidade", href: "/comunidade", icon: Users },
     { label: "Analytics", href: "/analytics", icon: BarChart3 },
     { label: "Perfil", href: "/perfil", icon: User },

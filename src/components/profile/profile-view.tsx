@@ -11,6 +11,9 @@ interface ProfileViewProps {
     metrics: any[];
     userSportsList: any[];
     allAvailableSports: any[];
+    streak?: any;
+    userAchievements?: any[];
+    achievementsCatalog?: any[];
   };
 }
 
@@ -78,14 +81,89 @@ export function ProfileView({ data }: ProfileViewProps) {
           </div>
         </div>
 
-        <button
-          onClick={handleExportData}
-          className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-md border border-line text-xs font-mono font-semibold hover:bg-osso transition-colors cursor-pointer self-start sm:self-center"
-          title="Direito de Portabilidade LGPD Art. 18"
-        >
-          <Download size={14} />
-          <span>Exportar Dados (LGPD)</span>
-        </button>
+        <div className="flex flex-col sm:flex-row items-start sm:items-center gap-2">
+          {data.streak && (
+            <div className="px-3 py-1.5 rounded-md bg-osso border border-line flex items-center gap-2">
+              <span className="text-amber-600 text-sm">🔥</span>
+              <div className="flex flex-col">
+                <span className="t-label !text-[9px]">Streak Semanal</span>
+                <span className="t-data text-xs font-bold text-grafite">
+                  {data.streak.currentWeeklyStreak} semanas
+                </span>
+              </div>
+            </div>
+          )}
+          <button
+            onClick={handleExportData}
+            className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-md border border-line text-xs font-mono font-semibold hover:bg-osso transition-colors cursor-pointer self-start sm:self-center"
+            title="Direito de Portabilidade LGPD Art. 18"
+          >
+            <Download size={14} />
+            <span>Exportar Dados (LGPD)</span>
+          </button>
+        </div>
+      </div>
+
+      {/* Conquistas & Marcos Esportivos (§13 e §15) */}
+      <div className="rounded-lg border border-line bg-surface p-6 flex flex-col gap-4 shadow-xs">
+        <div className="flex items-center justify-between">
+          <div>
+            <span className="t-label">Patrimônio de Evolução (§13 e §15)</span>
+            <h3 className="t-h2 mt-1">Conquistas & Marcos Esportivos</h3>
+            <p className="text-muted text-xs mt-1">
+              Marcos de consistência, autonomia, prática multimodal e superação pessoal.
+            </p>
+          </div>
+          <span className="t-data text-xs px-2.5 py-1 rounded bg-osso border border-line font-mono font-semibold">
+            {data.userAchievements?.length || 0} de {data.achievementsCatalog?.length || 6}
+          </span>
+        </div>
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+          {data.achievementsCatalog?.map((ach) => {
+            const isUnlocked = data.userAchievements?.some((ua) => ua.code === ach.code);
+            const userAch = data.userAchievements?.find((ua) => ua.code === ach.code);
+
+            return (
+              <div
+                key={ach.id}
+                className={`p-3.5 rounded-lg border transition-all flex flex-col justify-between ${
+                  isUnlocked
+                    ? "bg-surface border-profundo/40 shadow-xs"
+                    : "bg-osso/20 border-line/60 opacity-60"
+                }`}
+              >
+                <div className="flex items-start gap-3">
+                  <span className={`text-2xl p-2 rounded-md ${isUnlocked ? "bg-osso" : "grayscale opacity-50"}`}>
+                    {ach.icon}
+                  </span>
+                  <div>
+                    <h4 className="font-semibold text-xs text-grafite flex items-center gap-1.5">
+                      <span>{ach.title}</span>
+                      {isUnlocked && (
+                        <span className="w-1.5 h-1.5 rounded-full bg-lima inline-block" />
+                      )}
+                    </h4>
+                    <p className="text-[11px] text-muted mt-1 leading-snug">
+                      {ach.description}
+                    </p>
+                  </div>
+                </div>
+
+                <div className="mt-3 pt-2 border-t border-line/40 flex items-center justify-between text-[10px] text-muted">
+                  <span className="font-mono uppercase tracking-wider">{ach.category}</span>
+                  {isUnlocked && userAch?.unlockedAt ? (
+                    <span className="font-mono text-profundo font-semibold">
+                      Desbloqueado {new Date(userAch.unlockedAt).toLocaleDateString("pt-BR")}
+                    </span>
+                  ) : (
+                    <span className="font-mono italic">Em progresso</span>
+                  )}
+                </div>
+              </div>
+            );
+          })}
+        </div>
       </div>
 
       {/* Modalidades Favoritas Multimodalidade (§3) */}

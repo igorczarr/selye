@@ -3,16 +3,21 @@ import Link from "next/link";
 import { Navbar } from "@/components/navigation/navbar";
 import { CommunityFeed } from "@/components/community/community-feed";
 import { getCommunityFeed } from "@/actions/community";
-import { Users, Shield, Plus } from "lucide-react";
+import { Users, UserPlus, Trophy } from "lucide-react";
 
 export const instant = false;
 
-async function FeedLoader() {
-  const posts = await getCommunityFeed("explore");
-  return <CommunityFeed posts={posts} />;
+async function FeedLoader({ tab }: { tab: "explore" | "teams" | "following" }) {
+  const posts = await getCommunityFeed(tab);
+  return <CommunityFeed posts={posts} activeTab={tab} />;
 }
 
-export default function ComunidadePage() {
+export default async function ComunidadePage(props: {
+  searchParams: Promise<{ tab?: "explore" | "teams" | "following" }>;
+}) {
+  const searchParams = await props.searchParams;
+  const currentTab = searchParams.tab || "explore";
+
   return (
     <div className="min-h-screen bg-background text-foreground flex flex-col pb-16 md:pb-0">
       <Navbar />
@@ -26,13 +31,27 @@ export default function ComunidadePage() {
               Acompanhe treinos de amigos, publicações de equipes e o ritual do PÓS.
             </p>
           </div>
-          <div className="flex gap-2">
+          <div className="flex flex-wrap gap-2">
+            <Link
+              href="/comunidade/atletas"
+              className="inline-flex items-center gap-1.5 h-9 px-3.5 rounded-md border border-line bg-surface text-grafite text-xs font-semibold hover:bg-osso transition-colors shadow-xs"
+            >
+              <UserPlus size={14} />
+              <span>Descobrir Atletas</span>
+            </Link>
+            <Link
+              href="/comunidade/desafios"
+              className="inline-flex items-center gap-1.5 h-9 px-3.5 rounded-md border border-line bg-surface text-grafite text-xs font-semibold hover:bg-osso transition-colors shadow-xs"
+            >
+              <Trophy size={14} />
+              <span>Desafios</span>
+            </Link>
             <Link
               href="/equipes"
-              className="inline-flex items-center gap-1.5 h-10 px-4 rounded-md border border-line bg-surface text-grafite text-xs font-semibold hover:bg-osso transition-colors shadow-xs"
+              className="inline-flex items-center gap-1.5 h-9 px-3.5 rounded-md border border-line bg-surface text-grafite text-xs font-semibold hover:bg-osso transition-colors shadow-xs"
             >
-              <Users size={15} />
-              <span>Ver Equipes</span>
+              <Users size={14} />
+              <span>Equipes</span>
             </Link>
           </div>
         </div>
@@ -44,7 +63,7 @@ export default function ComunidadePage() {
             </div>
           }
         >
-          <FeedLoader />
+          <FeedLoader tab={currentTab} />
         </Suspense>
       </main>
     </div>

@@ -78,9 +78,19 @@ export async function getAllTeams() {
           )
         );
 
+      const groups = await db
+        .select({
+          id: schema.teamGroups.id,
+          name: schema.teamGroups.name,
+          description: schema.teamGroups.description,
+        })
+        .from(schema.teamGroups)
+        .where(eq(schema.teamGroups.teamId, t.id));
+
       return {
         ...t,
         membersCount: members.length,
+        groups,
       };
     })
   );
@@ -141,4 +151,103 @@ export async function joinTeamByCode(inviteCode: string) {
   revalidatePath("/equipes");
   revalidatePath("/comunidade");
   return membership;
+}
+
+/**
+ * Cria subgrupo dentro de uma equipe (§8.2 - Subgrupos por modalidade/nível)
+ */
+export async function createTeamGroup(
+  teamId: string,
+  name: string,
+  description?: string,
+  sportId?: string
+) {
+  const [group] = await db
+    .insert(schema.teamGroups)
+    .values({
+      teamId,
+      name,
+      description,
+      sportId,
+    })
+    .returning();
+
+  revalidatePath("/equipes");
+  return group;
+}
+
+/**
+ * Lista subgrupos de uma equipe
+ */
+export async function getTeamGroups(teamId: string) {
+  const groups = await db
+    .select({
+      id: schema.teamGroups.id,
+      name: schema.teamGroups.name,
+      description: schema.teamGroups.description,
+      createdAt: schema.teamGroups.createdAt,
+      sportName: schema.sports.namePt,
+      sportIcon: schema.sports.icon,
+    })
+    .from(schema.teamGroups)
+    .leftJoin(schema.sports, eq(schema.teamGroups.sportId, schema.sports.id))
+    .where(eq(schema.teamGroups.teamId, teamId));
+
+  return groups;
+}
+
+/**
+ * Retorna detalhes completos de uma equipe incluindo membros e subgrupos
+ */
+export async function getTeamDetails(slug: string) {
+  const [team] = await db
+    .select()
+    .from(schema.teams)
+    .where(eq(schema.teams.slug, slug))
+    .limit(1);
+
+  if (!team) {
+    return null;
+  }
+
+  const members = await db
+    .select({
+      id: schema.teamMemberships.id,
+      userId: schema.teamMemberships.userId,
+      role: schema.teamMemberships.role,
+      status: schema.teamMemberships.status,
+      joinedAt: schema.teamMemberships.joinedAt,
+      name: schema.users.name,
+      username: schema.users.username,
+      avatarUrl: schema.users.avatarUrl,
+    })
+    .from(schema.teamMemberships)
+    .innerJoin(schema.users, eq(schema.teamMemberships.userId, schema.users.id))
+    .where(
+      and(
+        eq(schema.teamMemberships.teamId, team.id),
+        eq(schema.teamMemberships.status, "active")
+      )
+    );
+
+  const groups = await getTeamGroups(team.id);
+
+  // Convite ativo
+  const [invitation] = await db
+    .select()
+    .from(schema.teamInvitations)
+    .where(
+      and(
+        eq(schema.teamInvitations.teamId, team.id),
+        eq(schema.teamInvitations.status, "active")
+      )
+    )
+    .limit(1);
+
+  return {
+    ...team,
+    members,
+    groups,
+    inviteCode: invitation?.inviteCode || null,
+  };
 }

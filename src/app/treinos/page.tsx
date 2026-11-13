@@ -2,7 +2,7 @@ import { Suspense } from "react";
 import Link from "next/link";
 import { Navbar } from "@/components/navigation/navbar";
 import { getUserRoutines, duplicateRoutine } from "@/actions/routines";
-import { PlusCircle, Copy, Play, Dumbbell, Calendar, Clock } from "lucide-react";
+import { PlusCircle, Copy, Play, Dumbbell, Calendar, Clock, Printer } from "lucide-react";
 
 export const instant = false;
 
@@ -86,21 +86,32 @@ async function RoutinesList() {
               </div>
 
               <div className="mt-5 pt-4 border-t border-line flex items-center justify-between gap-2">
-                <form
-                  action={async () => {
-                    "use server";
-                    await duplicateRoutine(routine.id);
-                  }}
-                >
-                  <button
-                    type="submit"
-                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded border border-line text-xs font-mono text-muted hover:text-grafite hover:bg-osso transition-colors cursor-pointer"
-                    title="Duplicar ficha"
+                <div className="flex items-center gap-1.5">
+                  <form
+                    action={async () => {
+                      "use server";
+                      await duplicateRoutine(routine.id);
+                    }}
                   >
-                    <Copy size={13} strokeWidth={1.75} />
-                    <span>Duplicar</span>
-                  </button>
-                </form>
+                    <button
+                      type="submit"
+                      className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded border border-line text-xs font-mono text-muted hover:text-grafite hover:bg-osso transition-colors cursor-pointer"
+                      title="Duplicar ficha"
+                    >
+                      <Copy size={13} strokeWidth={1.75} />
+                      <span>Duplicar</span>
+                    </button>
+                  </form>
+
+                  <Link
+                    href={`/treinos/${routine.id}/imprimir`}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded border border-line text-xs font-mono text-muted hover:text-grafite hover:bg-osso transition-colors cursor-pointer"
+                    title="Imprimir Ficha Técnica / Exportar PDF"
+                  >
+                    <Printer size={13} strokeWidth={1.75} />
+                    <span>PDF / Imprimir</span>
+                  </Link>
+                </div>
 
                 <Link
                   href="/"

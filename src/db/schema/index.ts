@@ -9,3 +9,4 @@ export * from "./social";
 export * from "./consistency";
 export * from "./content";
 export * from "./notifications";
+export * from "./integrations";
