@@ -1,8 +1,9 @@
 import { Suspense } from "react";
-import { SelyeLogo } from "@/components/brand/logo";
+import { Navbar } from "@/components/navigation/navbar";
 import { getDashboardData } from "@/actions/workout";
 import { WorkoutRunner } from "@/components/workout/workout-runner";
 import { ExerciseExplorer } from "@/components/catalog/exercise-explorer";
+import { SelyeLogo } from "@/components/brand/logo";
 
 export const instant = false;
 
@@ -130,21 +131,8 @@ async function DashboardContent() {
 
 export default function HomePage() {
   return (
-    <div className="min-h-screen bg-background text-foreground flex flex-col">
-      {/* Barra de Navegação Superior */}
-      <header className="border-b border-line bg-surface/80 backdrop-blur-md sticky top-0 z-40">
-        <div className="max-w-5xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <SelyeLogo height={26} className="text-grafite" />
-          </div>
-          <div className="flex items-center gap-3">
-            <span className="t-label hidden sm:inline-block">Atleta</span>
-            <span className="t-data text-xs px-2.5 py-1 rounded bg-osso border border-line">
-              Marina Costa
-            </span>
-          </div>
-        </div>
-      </header>
+    <div className="min-h-screen bg-background text-foreground flex flex-col pb-16 md:pb-0">
+      <Navbar />
 
       {/* Conteúdo Principal com Suspense */}
       <main className="max-w-5xl mx-auto px-4 sm:px-6 py-8 flex-1 flex flex-col gap-8 w-full">
