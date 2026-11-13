@@ -8,6 +8,13 @@
       "when": 1794202285267,
       "tag": "0000_zippy_malcolm_colcord",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1794610021220,
+      "tag": "0001_smart_titanium_man",
+      "breakpoints": true
     }
   ]
 }

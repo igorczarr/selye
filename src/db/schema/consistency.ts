@@ -36,3 +36,20 @@ export const streaks = pgTable("streaks", {
   lastCalculatedAt: timestamp("last_calculated_at", { withTimezone: true }).defaultNow().notNull(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
 });
+
+export const achievements = pgTable("achievements", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  code: text("code").notNull().unique(), // first_workout, weekly_streak_3, weekly_streak_10, team_member, multimodal_athlete, personal_record_1
+  title: text("title").notNull(),
+  description: text("description").notNull(),
+  category: text("category").default("consistency").notNull(), // consistency, milestone, social, multimodal
+  icon: text("icon").notNull(), // emoji or icon name
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+});
+
+export const userAchievements = pgTable("user_achievements", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  userId: uuid("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  achievementId: uuid("achievement_id").notNull().references(() => achievements.id, { onDelete: "cascade" }),
+  unlockedAt: timestamp("unlocked_at", { withTimezone: true }).defaultNow().notNull(),
+});

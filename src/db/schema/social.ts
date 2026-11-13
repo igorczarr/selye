@@ -1,4 +1,4 @@
-import { pgTable, uuid, text, timestamp, integer, jsonb } from "drizzle-orm/pg-core";
+import { pgTable, uuid, text, timestamp, integer, jsonb, boolean } from "drizzle-orm/pg-core";
 import { users } from "./identity";
 import { teams } from "./teams";
 import { workoutSessions } from "./workout";
@@ -41,5 +41,22 @@ export const follows = pgTable("follows", {
   followerId: uuid("follower_id").notNull().references(() => users.id, { onDelete: "cascade" }),
   followingId: uuid("following_id").notNull().references(() => users.id, { onDelete: "cascade" }),
   status: text("status").default("accepted").notNull(), // accepted, pending
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+});
+
+export const userBlocks = pgTable("user_blocks", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  blockerUserId: uuid("blocker_user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  blockedUserId: uuid("blocked_user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+});
+
+export const moderationReports = pgTable("moderation_reports", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  reporterUserId: uuid("reporter_user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  targetType: text("target_type").notNull(), // post, comment, user
+  targetId: text("target_id").notNull(),
+  reason: text("reason").notNull(),
+  status: text("status").default("pending").notNull(), // pending, reviewed, dismissed, removed
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
 });
