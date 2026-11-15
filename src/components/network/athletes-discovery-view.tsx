@@ -3,7 +3,15 @@
 import { useState, useTransition } from "react";
 import Link from "next/link";
 import { followUser, unfollowUser } from "@/actions/network";
-import { Search, UserPlus, UserCheck, Flame, MapPin, ArrowLeft } from "lucide-react";
+import {
+  Search,
+  UserPlus,
+  UserCheck,
+  Flame,
+  MapPin,
+  ArrowLeft,
+  Users,
+} from "lucide-react";
 
 interface Athlete {
   id: string;
@@ -31,10 +39,14 @@ export function AthletesDiscoveryView({
   const [athletes, setAthletes] = useState(initialAthletes);
   const [isPending, startTransition] = useTransition();
 
-  const handleToggleFollow = (athleteId: string, currentlyFollowing: boolean) => {
-    // Atualização otimista
+  const handleToggleFollow = (
+    athleteId: string,
+    currentlyFollowing: boolean
+  ) => {
     setAthletes((prev) =>
-      prev.map((a) => (a.id === athleteId ? { ...a, isFollowing: !currentlyFollowing } : a))
+      prev.map((a) =>
+        a.id === athleteId ? { ...a, isFollowing: !currentlyFollowing } : a
+      )
     );
 
     startTransition(async () => {
@@ -54,48 +66,52 @@ export function AthletesDiscoveryView({
       (a.bio && a.bio.toLowerCase().includes(searchQuery.toLowerCase()));
 
     const matchesSport =
-      selectedSport === "all" || a.sports.some((s) => s.code === selectedSport);
+      selectedSport === "all" ||
+      a.sports.some((s) => s.code === selectedSport);
 
     return matchesQuery && matchesSport;
   });
 
   return (
-    <div className="flex flex-col gap-6 max-w-4xl mx-auto w-full">
-      {/* Top Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-        <div>
-          <Link
-            href="/comunidade"
-            className="inline-flex items-center gap-1 text-xs text-muted hover:text-grafite mb-2"
-          >
-            <ArrowLeft size={13} />
-            <span>Voltar ao Mural</span>
-          </Link>
-          <span className="t-label block">Rede Esportiva (§11.1 e §11.4)</span>
-          <h1 className="t-h1 mt-1">Descoberta de Atletas</h1>
-          <p className="text-muted text-xs mt-1">
-            Encontre atletas com as mesmas modalidades, valores de constância e objetivos de treino.
-          </p>
-        </div>
+    <div className="flex flex-col gap-6 max-w-4xl mx-auto w-full fade-up">
+      {/* Cabeçalho */}
+      <div>
+        <Link
+          href="/comunidade"
+          className="inline-flex items-center gap-1.5 text-xs font-mono text-muted hover:text-foreground mb-3 transition-colors"
+        >
+          <ArrowLeft size={14} />
+          <span>Voltar ao Mural</span>
+        </Link>
+        <span className="t-label block">Rede Esportiva</span>
+        <h1 className="t-h1 mt-1">Descoberta de Atletas</h1>
+        <p className="text-muted text-sm mt-1">
+          Encontre praticantes das mesmas modalidades e acompanhe rotinas de consistência.
+        </p>
       </div>
 
-      {/* Barra de Filtros e Busca */}
-      <div className="rounded-lg border border-line bg-surface p-4 flex flex-col sm:flex-row gap-3 shadow-xs">
+      {/* Barra de Busca e Filtro de Modalidade */}
+      <div className="card p-4 flex flex-col sm:flex-row gap-3">
         <div className="relative flex-1">
-          <Search size={15} className="absolute left-3 top-3 text-muted" />
+          <Search
+            size={15}
+            className="absolute left-3.5 top-1/2 -translate-y-1/2 text-muted pointer-events-none"
+          />
           <input
-            type="text"
+            type="search"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder="Buscar por nome, @usuario ou modalidade..."
-            className="w-full h-10 pl-9 pr-3 rounded-md border border-line bg-background text-xs focus:outline-none focus:ring-1 focus:ring-profundo"
+            placeholder="Buscar por nome, @usuario ou bio..."
+            aria-label="Buscar atletas"
+            className="input h-10 pl-9 text-xs"
           />
         </div>
 
         <select
           value={selectedSport}
           onChange={(e) => setSelectedSport(e.target.value)}
-          className="h-10 px-3 rounded-md border border-line bg-background text-xs font-medium"
+          aria-label="Filtrar por modalidade esportiva"
+          className="input h-10 sm:w-56 text-xs"
         >
           <option value="all">Todas as Modalidades</option>
           {sports.map((s) => (
@@ -106,100 +122,110 @@ export function AthletesDiscoveryView({
         </select>
       </div>
 
-      {/* Grid de Atletas */}
+      {/* Grade de Atletas */}
       {filtered.length === 0 ? (
-        <div className="py-16 text-center text-muted text-sm border border-line rounded-lg bg-surface p-6">
-          Nenhum atleta encontrado para os critérios pesquisados.
+        <div className="card p-12 text-center flex flex-col items-center gap-2">
+          <Users size={26} className="text-muted/60" />
+          <p className="font-semibold text-sm text-foreground">
+            Nenhum atleta corresponde aos critérios de busca
+          </p>
+          <button
+            type="button"
+            onClick={() => {
+              setSearchQuery("");
+              setSelectedSport("all");
+            }}
+            className="btn btn-ghost h-9 px-3 text-xs mt-1"
+          >
+            Limpar filtros
+          </button>
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           {filtered.map((athlete) => (
-            <div
+            <article
               key={athlete.id}
-              className="rounded-lg border border-line bg-surface p-5 flex flex-col justify-between gap-4 shadow-xs hover:border-profundo/40 transition-colors"
+              className="card card-interactive p-5 flex flex-col justify-between gap-4"
             >
               <div className="flex items-start justify-between gap-3">
                 <div className="flex items-start gap-3">
                   <Link
                     href={`/atleta/${athlete.username}`}
-                    className="w-12 h-12 rounded-full bg-grafite text-osso flex items-center justify-center font-bold text-base shadow-xs shrink-0 hover:opacity-90 transition-opacity"
+                    className="w-12 h-12 rounded-full bg-foreground text-background flex items-center justify-center font-semibold text-base shrink-0 hover:opacity-90 transition-opacity"
                   >
                     {athlete.name?.[0] || "A"}
                   </Link>
                   <div>
                     <Link
                       href={`/atleta/${athlete.username}`}
-                      className="font-semibold text-sm hover:underline text-grafite"
+                      className="font-semibold text-sm text-foreground hover:underline"
                     >
                       {athlete.name}
                     </Link>
-                    <p className="t-data text-xs text-muted">@{athlete.username}</p>
+                    <p className="t-data text-xs text-muted">
+                      @{athlete.username}
+                    </p>
                     {athlete.location && (
-                      <div className="flex items-center gap-1 text-[11px] text-muted mt-0.5">
-                        <MapPin size={11} />
+                      <div className="flex items-center gap-1 text-xs text-muted mt-1">
+                        <MapPin size={12} />
                         <span>{athlete.location}</span>
                       </div>
                     )}
                   </div>
                 </div>
 
-                {/* Badge de Streak Semanal */}
                 {athlete.weeklyStreak > 0 && (
                   <div
-                    className="flex items-center gap-1 px-2.5 py-1 rounded bg-osso border border-line shrink-0"
+                    className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-lima/25 text-foreground shrink-0"
                     title="Semanas consecutivas cumprindo a meta"
                   >
-                    <Flame size={12} className="text-amber-600" />
-                    <span className="t-data text-xs font-bold text-grafite">
+                    <Flame size={12} className="text-accent-text" />
+                    <span className="t-data text-xs font-semibold">
                       {athlete.weeklyStreak} sem
                     </span>
                   </div>
                 )}
               </div>
 
-              {/* Bio */}
               {athlete.bio && (
-                <p className="text-xs text-foreground/80 line-clamp-2 leading-relaxed">
+                <p className="text-xs text-muted line-clamp-2 leading-relaxed">
                   {athlete.bio}
                 </p>
               )}
 
-              {/* Modalidades & Ação */}
-              <div className="flex items-center justify-between pt-3 border-t border-line/60">
-                <div className="flex flex-wrap gap-1">
+              <div className="flex items-center justify-between gap-2 pt-3 border-t border-line">
+                <div className="flex flex-wrap gap-1.5">
                   {athlete.sports.map((s) => (
-                    <span
-                      key={s.code}
-                      className="px-2 py-0.5 rounded text-[10px] font-mono bg-osso text-profundo border border-line/60"
-                    >
+                    <span key={s.code} className="chip">
                       {s.namePt}
                     </span>
                   ))}
                 </div>
 
                 <button
-                  onClick={() => handleToggleFollow(athlete.id, athlete.isFollowing)}
+                  type="button"
+                  onClick={() =>
+                    handleToggleFollow(athlete.id, athlete.isFollowing)
+                  }
                   disabled={isPending}
-                  className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-semibold transition-all cursor-pointer ${
-                    athlete.isFollowing
-                      ? "border border-line bg-osso/60 text-grafite hover:bg-red-50 hover:text-red-700 hover:border-red-200"
-                      : "bg-grafite text-osso hover:bg-noite shadow-xs"
+                  className={`btn h-9 px-3.5 text-xs shrink-0 ${
+                    athlete.isFollowing ? "btn-ghost" : "btn-dark"
                   }`}
                 >
                   {athlete.isFollowing ? (
                     <>
-                      <UserCheck size={13} className="text-profundo" />
+                      <UserCheck size={14} className="text-accent-text" />
                       <span>Seguindo</span>
                     </>
                   ) : (
                     <>
-                      <UserPlus size={13} />
+                      <UserPlus size={14} />
                       <span>Seguir</span>
                     </>
                   )}
                 </button>
               </div>
-            </div>
+            </article>
           ))}
         </div>
       )}

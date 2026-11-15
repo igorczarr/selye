@@ -16,11 +16,29 @@ const WORD_PATHS = [
 const LIMA = "#C7D977";
 
 /** Símbolo: trajetória em S + ponto de registro (lima fixo). Mínimo 24 px. */
-export function SelyeSymbol({ size = 32, ...props }: { size?: number } & SVGProps<SVGSVGElement>) {
+export function SelyeSymbol({
+  size = 32,
+  ...props
+}: { size?: number } & SVGProps<SVGSVGElement>) {
   return (
-    <svg viewBox="12 8 76 96" width={(size * 76) / 96} height={size} role="img" aria-label="Selye" {...props}>
-      <g fill="none" stroke="currentColor" strokeWidth={7.8} strokeLinecap="round" strokeLinejoin="round">
-        {SYMBOL_PATHS.map((d) => <path key={d} d={d} />)}
+    <svg
+      viewBox="12 8 76 96"
+      width={(size * 76) / 96}
+      height={size}
+      role="img"
+      aria-label="Selye"
+      {...props}
+    >
+      <g
+        fill="none"
+        stroke="currentColor"
+        strokeWidth={7.8}
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      >
+        {SYMBOL_PATHS.map((d) => (
+          <path key={d} d={d} />
+        ))}
         <circle cx={50.5} cy={55.5} r={5.5} fill={LIMA} stroke="none" />
       </g>
     </svg>
@@ -28,15 +46,43 @@ export function SelyeSymbol({ size = 32, ...props }: { size?: number } & SVGProp
 }
 
 /** Logotipo horizontal preferencial (símbolo + SELYE). Mínimo 140 px de largura. */
-export function SelyeLogo({ height = 40, ...props }: { height?: number } & SVGProps<SVGSVGElement>) {
+export function SelyeLogo({
+  height = 40,
+  ...props
+}: { height?: number } & SVGProps<SVGSVGElement>) {
   return (
-    <svg viewBox="0 0 700 120" height={height} width={(height * 700) / 120} role="img" aria-label="Selye" {...props}>
-      <g fill="none" stroke="currentColor" strokeWidth={7.8} strokeLinecap="round" strokeLinejoin="round" transform="translate(0 4) scale(1)">
-        {SYMBOL_PATHS.map((d) => <path key={d} d={d} />)}
+    <svg
+      viewBox="0 0 700 120"
+      height={height}
+      width={(height * 700) / 120}
+      role="img"
+      aria-label="Selye"
+      {...props}
+    >
+      <g
+        fill="none"
+        stroke="currentColor"
+        strokeWidth={7.8}
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        transform="translate(0 4) scale(1)"
+      >
+        {SYMBOL_PATHS.map((d) => (
+          <path key={d} d={d} />
+        ))}
         <circle cx={50.5} cy={55.5} r={5.5} fill={LIMA} stroke="none" />
       </g>
-      <g fill="none" stroke="currentColor" strokeWidth={5.8} strokeLinecap="round" strokeLinejoin="round" transform="translate(120 18) scale(1.65)">
-        {WORD_PATHS.map((d) => <path key={d} d={d} />)}
+      <g
+        fill="none"
+        stroke="currentColor"
+        strokeWidth={5.8}
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        transform="translate(120 18) scale(1.65)"
+      >
+        {WORD_PATHS.map((d) => (
+          <path key={d} d={d} />
+        ))}
       </g>
     </svg>
   );

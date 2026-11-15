@@ -1,8 +1,20 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { logBodyMetric, updateFavoriteSports, exportUserData } from "@/actions/profile";
-import { User, Shield, Lock, Activity, Download, Plus, Check } from "lucide-react";
+import {
+  logBodyMetric,
+  updateFavoriteSports,
+  exportUserData,
+} from "@/actions/profile";
+import {
+  Lock,
+  Download,
+  Plus,
+  Check,
+  Flame,
+  Award,
+  CheckCircle2,
+} from "lucide-react";
 
 interface ProfileViewProps {
   data: {
@@ -17,15 +29,28 @@ interface ProfileViewProps {
   };
 }
 
+const METRIC_TYPE_LABELS: Record<string, string> = {
+  weight: "Peso Corporal",
+  body_fat: "Percentual de Gordura",
+  resting_hr: "FC de Repouso",
+  waist: "Circunferência Abdominal",
+};
+
+const CATEGORY_LABELS: Record<string, string> = {
+  consistency: "Consistência",
+  milestone: "Marco",
+  social: "Comunidade",
+  multimodal: "Multimodal",
+};
+
 export function ProfileView({ data }: ProfileViewProps) {
   const [isPending, startTransition] = useTransition();
 
-  // Estados de nova medição física
   const [metricType, setMetricType] = useState("weight");
   const [metricValue, setMetricValue] = useState("");
   const [metricUnit, setMetricUnit] = useState("kg");
+  const [metricSavedBanner, setMetricSavedBanner] = useState(false);
 
-  // Modalidades selecionadas
   const [selectedSports, setSelectedSports] = useState<string[]>(
     data.userSportsList.map((s) => s.sportId)
   );
@@ -37,7 +62,8 @@ export function ProfileView({ data }: ProfileViewProps) {
     startTransition(async () => {
       await logBodyMetric(metricType, Number(metricValue), metricUnit);
       setMetricValue("");
-      alert("Medição registrada em histórico privado!");
+      setMetricSavedBanner(true);
+      setTimeout(() => setMetricSavedBanner(false), 3000);
     });
   };
 
@@ -57,122 +83,145 @@ export function ProfileView({ data }: ProfileViewProps) {
 
   const handleExportData = async () => {
     const exported = await exportUserData();
-    const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(exported, null, 2));
+    const dataStr =
+      "data:text/json;charset=utf-8," +
+      encodeURIComponent(JSON.stringify(exported, null, 2));
     const downloadAnchor = document.createElement("a");
     downloadAnchor.setAttribute("href", dataStr);
-    downloadAnchor.setAttribute("download", `selye_meus_dados_lgpd_${new Date().toISOString().split("T")[0]}.json`);
+    downloadAnchor.setAttribute(
+      "download",
+      `selye_portabilidade_lgpd_${new Date().toISOString().split("T")[0]}.json`
+    );
     document.body.appendChild(downloadAnchor);
     downloadAnchor.click();
     downloadAnchor.remove();
   };
 
   return (
-    <div className="flex flex-col gap-6 max-w-3xl mx-auto w-full">
-      {/* Cabeçalho do Perfil (§7.1) */}
-      <div className="rounded-lg border border-line bg-surface p-6 flex flex-col sm:flex-row sm:items-center justify-between gap-4 shadow-xs">
+    <div className="flex flex-col gap-6 max-w-3xl mx-auto w-full fade-up">
+      {/* Cabeçalho do Perfil */}
+      <section className="card p-6 sm:p-8 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div className="flex items-center gap-4">
-          <div className="w-16 h-16 rounded-full bg-grafite text-osso flex items-center justify-center font-bold text-2xl shadow-xs">
-            {data.user.name?.[0] || "M"}
+          <div className="w-16 h-16 rounded-full bg-foreground text-background flex items-center justify-center font-bold text-2xl shrink-0">
+            {data.user.name?.[0] || "A"}
           </div>
           <div>
             <h1 className="t-h1">{data.user.name}</h1>
-            <p className="t-data text-xs text-muted">@{data.user.username} · {data.user.email}</p>
-            <p className="text-xs text-muted mt-1">{data.user.bio}</p>
+            <p className="t-data text-xs text-muted">
+              @{data.user.username} · {data.user.email}
+            </p>
+            {data.user.bio && (
+              <p className="text-xs text-muted mt-1">{data.user.bio}</p>
+            )}
           </div>
         </div>
 
-        <div className="flex flex-col sm:flex-row items-start sm:items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2 shrink-0">
           {data.streak && (
-            <div className="px-3 py-1.5 rounded-md bg-osso border border-line flex items-center gap-2">
-              <span className="text-amber-600 text-sm">🔥</span>
+            <div className="px-3.5 py-2 rounded-xl bg-lima/25 border border-profundo/30 flex items-center gap-2">
+              <Flame size={16} className="text-accent-text" />
               <div className="flex flex-col">
-                <span className="t-label !text-[9px]">Streak Semanal</span>
-                <span className="t-data text-xs font-bold text-grafite">
-                  {data.streak.currentWeeklyStreak} semanas
+                <span className="t-label">Streak Semanal</span>
+                <span className="t-data text-xs font-semibold text-foreground">
+                  {data.streak.currentWeeklyStreak}{" "}
+                  {data.streak.currentWeeklyStreak === 1 ? "semana" : "semanas"}
                 </span>
               </div>
             </div>
           )}
+
           <button
+            type="button"
             onClick={handleExportData}
-            className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-md border border-line text-xs font-mono font-semibold hover:bg-osso transition-colors cursor-pointer self-start sm:self-center"
-            title="Direito de Portabilidade LGPD Art. 18"
+            className="btn btn-ghost h-10 px-3.5 text-xs font-mono"
+            title="Portabilidade integral dos seus dados (LGPD)"
           >
             <Download size={14} />
-            <span>Exportar Dados (LGPD)</span>
+            <span>Exportar JSON (LGPD)</span>
           </button>
         </div>
-      </div>
+      </section>
 
-      {/* Conquistas & Marcos Esportivos (§13 e §15) */}
-      <div className="rounded-lg border border-line bg-surface p-6 flex flex-col gap-4 shadow-xs">
+      {/* Conquistas & Marcos Esportivos */}
+      <section className="card p-6 flex flex-col gap-4">
         <div className="flex items-center justify-between">
           <div>
-            <span className="t-label">Patrimônio de Evolução (§13 e §15)</span>
-            <h3 className="t-h2 mt-1">Conquistas & Marcos Esportivos</h3>
+            <span className="t-label">Patrimônio de Evolução</span>
+            <h2 className="t-h2 mt-1">Conquistas & Marcos Esportivos</h2>
             <p className="text-muted text-xs mt-1">
-              Marcos de consistência, autonomia, prática multimodal e superação pessoal.
+              Reconhecimentos de constância semanal, autonomia e prática multimodal.
             </p>
           </div>
-          <span className="t-data text-xs px-2.5 py-1 rounded bg-osso border border-line font-mono font-semibold">
-            {data.userAchievements?.length || 0} de {data.achievementsCatalog?.length || 6}
+          <span className="chip t-data">
+            {data.userAchievements?.length || 0} /{" "}
+            {data.achievementsCatalog?.length || 6}
           </span>
         </div>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
           {data.achievementsCatalog?.map((ach) => {
-            const isUnlocked = data.userAchievements?.some((ua) => ua.code === ach.code);
-            const userAch = data.userAchievements?.find((ua) => ua.code === ach.code);
+            const isUnlocked = data.userAchievements?.some(
+              (ua) => ua.code === ach.code
+            );
+            const userAch = data.userAchievements?.find(
+              (ua) => ua.code === ach.code
+            );
 
             return (
               <div
                 key={ach.id}
-                className={`p-3.5 rounded-lg border transition-all flex flex-col justify-between ${
+                className={`p-4 rounded-xl border transition-all flex flex-col justify-between ${
                   isUnlocked
-                    ? "bg-surface border-profundo/40 shadow-xs"
-                    : "bg-osso/20 border-line/60 opacity-60"
+                    ? "bg-lima/10 border-profundo/40"
+                    : "bg-foreground/[0.02] border-line opacity-65"
                 }`}
               >
                 <div className="flex items-start gap-3">
-                  <span className={`text-2xl p-2 rounded-md ${isUnlocked ? "bg-osso" : "grayscale opacity-50"}`}>
-                    {ach.icon}
-                  </span>
+                  <div
+                    className={`w-10 h-10 rounded-lg flex items-center justify-center shrink-0 ${
+                      isUnlocked
+                        ? "bg-lima text-grafite"
+                        : "bg-foreground/10 text-muted"
+                    }`}
+                  >
+                    <Award size={18} />
+                  </div>
                   <div>
-                    <h4 className="font-semibold text-xs text-grafite flex items-center gap-1.5">
+                    <h3 className="font-semibold text-xs text-foreground flex items-center gap-1.5">
                       <span>{ach.title}</span>
                       {isUnlocked && (
                         <span className="w-1.5 h-1.5 rounded-full bg-lima inline-block" />
                       )}
-                    </h4>
-                    <p className="text-[11px] text-muted mt-1 leading-snug">
+                    </h3>
+                    <p className="text-xs text-muted mt-1 leading-snug">
                       {ach.description}
                     </p>
                   </div>
                 </div>
 
-                <div className="mt-3 pt-2 border-t border-line/40 flex items-center justify-between text-[10px] text-muted">
-                  <span className="font-mono uppercase tracking-wider">{ach.category}</span>
+                <div className="mt-3 pt-2 border-t border-line/60 flex items-center justify-between text-xs text-muted font-mono">
+                  <span>{CATEGORY_LABELS[ach.category] || ach.category}</span>
                   {isUnlocked && userAch?.unlockedAt ? (
-                    <span className="font-mono text-profundo font-semibold">
-                      Desbloqueado {new Date(userAch.unlockedAt).toLocaleDateString("pt-BR")}
+                    <span className="text-accent-text font-semibold">
+                      {new Date(userAch.unlockedAt).toLocaleDateString("pt-BR")}
                     </span>
                   ) : (
-                    <span className="font-mono italic">Em progresso</span>
+                    <span>Em aberto</span>
                   )}
                 </div>
               </div>
             );
           })}
         </div>
-      </div>
+      </section>
 
-      {/* Modalidades Favoritas Multimodalidade (§3) */}
-      <div className="rounded-lg border border-line bg-surface p-6 flex flex-col gap-4 shadow-xs">
+      {/* Modalidades Favoritas */}
+      <section className="card p-6 flex flex-col gap-4">
         <div>
-          <span className="t-label">Multimodalidade (§3)</span>
-          <h3 className="t-h2 mt-1">Minhas Modalidades Favoritas</h3>
+          <span className="t-label">Prática Esportiva</span>
+          <h2 className="t-h2 mt-1">Minhas Modalidades Favoritas</h2>
           <p className="text-muted text-xs mt-1">
-            Selecione uma ou várias práticas esportivas para personalizar seus indicadores e treinos.
+            Selecione uma ou mais práticas esportivas para calibrar suas recomendações de carga.
           </p>
         </div>
 
@@ -182,41 +231,67 @@ export function ProfileView({ data }: ProfileViewProps) {
             return (
               <button
                 key={sport.id}
+                type="button"
+                aria-pressed={isSelected}
                 onClick={() => toggleSport(sport.id)}
-                className={`p-3 rounded-md border text-left text-xs font-medium flex items-center justify-between transition-all cursor-pointer ${
+                className={`h-11 px-3.5 rounded-xl border text-left text-xs font-medium flex items-center justify-between transition-all cursor-pointer ${
                   isSelected
-                    ? "bg-grafite text-osso border-grafite font-semibold"
-                    : "bg-osso/40 border-line text-muted hover:border-profundo"
+                    ? "bg-foreground text-background border-foreground font-semibold"
+                    : "bg-foreground/[0.02] border-line text-muted hover:text-foreground hover:border-mineral"
                 }`}
               >
                 <span>{sport.namePt}</span>
-                {isSelected ? <Check size={14} className="text-lima" /> : <Plus size={14} />}
+                {isSelected ? (
+                  <Check size={14} className="text-lima shrink-0" />
+                ) : (
+                  <Plus size={14} className="shrink-0" />
+                )}
               </button>
             );
           })}
         </div>
-      </div>
+      </section>
 
-      {/* Informações Físicas Pessoais (§7.2 e Regra de Privacidade §19.2) */}
-      <div className="rounded-lg border border-line bg-surface p-6 flex flex-col gap-4 shadow-xs">
-        <div className="flex justify-between items-start">
-          <div>
-            <div className="flex items-center gap-1.5">
-              <Lock size={13} className="text-profundo" />
-              <span className="t-label !text-profundo">Privado por Padrão (§7.2)</span>
-            </div>
-            <h3 className="t-h2 mt-1">Gestão Física e Medidas Corporais</h3>
-            <p className="text-muted text-xs mt-1">
-              Seus dados físicos não são expostos a membros ou treinadores sem sua autorização explícita.
-            </p>
+      {/* Gestão Física e Medidas Corporais (Privado por Padrão) */}
+      <section className="card p-6 flex flex-col gap-4">
+        <div>
+          <div className="flex items-center gap-1.5">
+            <Lock size={13} className="text-accent-text" />
+            <span className="t-label !text-accent-text">
+              Privado por Padrão · Controle do Titular
+            </span>
           </div>
+          <h2 className="t-h2 mt-1">Biometria e Medidas Corporais</h2>
+          <p className="text-muted text-xs mt-1">
+            Seus indicadores biométricos são estritamente privados e nunca são exibidos no perfil público.
+          </p>
         </div>
 
-        {/* Formulário de Registro de Nova Medição */}
-        <form onSubmit={handleLogMetric} className="flex flex-wrap items-end gap-2.5 pt-2">
-          <div className="flex flex-col gap-1">
-            <label className="t-aux text-muted">Tipo de Métrica</label>
+        {metricSavedBanner && (
+          <div
+            role="status"
+            className="rounded-xl border border-profundo bg-lima/20 px-4 py-2.5 flex items-center gap-2 text-xs text-foreground"
+          >
+            <CheckCircle2 size={15} className="text-accent-text shrink-0" />
+            <span className="font-medium">
+              Medição registrada no seu histórico privado.
+            </span>
+          </div>
+        )}
+
+        <form
+          onSubmit={handleLogMetric}
+          className="grid grid-cols-1 sm:grid-cols-12 gap-3 items-end pt-1"
+        >
+          <div className="sm:col-span-5 flex flex-col gap-1">
+            <label
+              htmlFor="metric-type"
+              className="t-aux text-foreground font-semibold"
+            >
+              Indicador Biométrico
+            </label>
             <select
+              id="metric-type"
               value={metricType}
               onChange={(e) => {
                 setMetricType(e.target.value);
@@ -225,60 +300,68 @@ export function ProfileView({ data }: ProfileViewProps) {
                 else if (e.target.value === "resting_hr") setMetricUnit("bpm");
                 else setMetricUnit("cm");
               }}
-              className="h-9 px-2.5 rounded border border-line bg-background text-xs"
+              className="input h-10 text-xs"
             >
-              <option value="weight">Peso Corporal</option>
-              <option value="body_fat">% de Gordura</option>
-              <option value="resting_hr">Freq. Cardíaca de Repouso</option>
-              <option value="waist">Circunferência Abdominal</option>
+              <option value="weight">Peso Corporal (kg)</option>
+              <option value="body_fat">Percentual de Gordura (%)</option>
+              <option value="resting_hr">FC de Repouso (bpm)</option>
+              <option value="waist">Circunferência Abdominal (cm)</option>
             </select>
           </div>
 
-          <div className="flex flex-col gap-1">
-            <label className="t-aux text-muted">Valor</label>
-            <div className="flex items-center gap-1">
-              <input
-                type="number"
-                step="0.1"
-                required
-                value={metricValue}
-                onChange={(e) => setMetricValue(e.target.value)}
-                placeholder="Ex: 73.5"
-                className="w-24 h-9 px-2.5 rounded border border-line bg-background text-xs font-mono"
-              />
-              <span className="t-data text-xs text-muted">{metricUnit}</span>
-            </div>
+          <div className="sm:col-span-4 flex flex-col gap-1">
+            <label
+              htmlFor="metric-val"
+              className="t-aux text-foreground font-semibold"
+            >
+              Valor ({metricUnit})
+            </label>
+            <input
+              id="metric-val"
+              type="number"
+              step="0.1"
+              required
+              value={metricValue}
+              onChange={(e) => setMetricValue(e.target.value)}
+              placeholder="Ex: 73.5"
+              className="input h-10 text-xs font-mono"
+            />
           </div>
 
-          <button
-            type="submit"
-            disabled={isPending || !metricValue}
-            className="h-9 px-4 rounded bg-grafite text-osso font-semibold text-xs hover:bg-noite disabled:opacity-40 transition-colors cursor-pointer"
-          >
-            {isPending ? "Gravando..." : "Registrar"}
-          </button>
+          <div className="sm:col-span-3">
+            <button
+              type="submit"
+              disabled={isPending || !metricValue}
+              className="btn btn-primary w-full h-10 text-xs"
+            >
+              {isPending ? "Gravando..." : "Registrar"}
+            </button>
+          </div>
         </form>
 
-        {/* Histórico Temporal de Medições (§7.2) */}
-        <div className="border-t border-line/60 pt-3">
-          <span className="t-aux text-muted font-mono uppercase tracking-wider">Histórico Recente</span>
-          <div className="mt-2 space-y-1.5 max-h-48 overflow-y-auto">
+        {/* Histórico de Medições */}
+        <div className="border-t border-line pt-4">
+          <span className="t-label block mb-2.5">Histórico Recente</span>
+          <div className="space-y-2 max-h-52 overflow-y-auto pr-1">
             {data.metrics.length === 0 ? (
-              <p className="text-xs text-muted italic">Nenhuma medição registrada ainda.</p>
+              <p className="text-xs text-muted">
+                Nenhuma medição biométrica registrada até o momento.
+              </p>
             ) : (
               data.metrics.map((m) => (
                 <div
                   key={m.id}
-                  className="flex items-center justify-between text-xs py-1.5 px-3 rounded bg-osso/30 border border-line/50"
+                  className="flex items-center justify-between text-xs py-2.5 px-3.5 rounded-lg bg-foreground/[0.02] border border-line"
                 >
-                  <span className="font-semibold text-grafite capitalize">
-                    {m.metricType.replace("_", " ")}
+                  <span className="font-semibold text-foreground">
+                    {METRIC_TYPE_LABELS[m.metricType] ||
+                      m.metricType.replace("_", " ")}
                   </span>
                   <div className="flex items-center gap-3">
-                    <span className="t-data font-bold">
+                    <span className="t-data font-semibold text-foreground">
                       {m.valueNumeric} {m.unit}
                     </span>
-                    <span className="t-data text-[10px] text-muted">
+                    <span className="t-data text-xs text-muted">
                       {new Date(m.recordedAt).toLocaleDateString("pt-BR")}
                     </span>
                   </div>
@@ -287,7 +370,7 @@ export function ProfileView({ data }: ProfileViewProps) {
             )}
           </div>
         </div>
-      </div>
+      </section>
     </div>
   );
 }

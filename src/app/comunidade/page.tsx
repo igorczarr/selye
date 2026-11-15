@@ -12,6 +12,21 @@ async function FeedLoader({ tab }: { tab: "explore" | "teams" | "following" }) {
   return <CommunityFeed posts={posts} activeTab={tab} />;
 }
 
+function CommunitySkeleton() {
+  return (
+    <div
+      className="flex flex-col gap-6 max-w-2xl mx-auto w-full"
+      aria-busy="true"
+      aria-label="Carregando mural esportivo"
+    >
+      <div className="skeleton h-12 w-full" />
+      <div className="skeleton h-32 w-full" />
+      <div className="skeleton h-52 w-full" />
+      <div className="skeleton h-52 w-full" />
+    </div>
+  );
+}
+
 export default async function ComunidadePage(props: {
   searchParams: Promise<{ tab?: "explore" | "teams" | "following" }>;
 }) {
@@ -19,50 +34,40 @@ export default async function ComunidadePage(props: {
   const currentTab = searchParams.tab || "explore";
 
   return (
-    <div className="min-h-screen bg-background text-foreground flex flex-col pb-16 md:pb-0">
+    <div className="min-h-screen bg-background text-foreground flex flex-col pb-20 md:pb-0">
       <Navbar />
       <main className="max-w-4xl mx-auto px-4 sm:px-6 py-8 flex-1 w-full">
-        {/* Banner Superior da Comunidade */}
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
+        <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4 mb-6">
           <div>
-            <span className="t-label">Comunidade & Conexão (§11 e §12)</span>
-            <h1 className="t-h1 mt-1">Mural Esportivo</h1>
+            <span className="t-label">Rede Esportiva</span>
+            <h1 className="t-h1 mt-1">Mural da Comunidade</h1>
             <p className="text-muted text-sm mt-1">
-              Acompanhe treinos de amigos, publicações de equipes e o ritual do PÓS.
+              Acompanhe sessões concluídas, aprendizados técnicos e a constância de outros atletas.
             </p>
           </div>
-          <div className="flex flex-wrap gap-2">
+          <div className="flex flex-wrap gap-2 shrink-0">
             <Link
               href="/comunidade/atletas"
-              className="inline-flex items-center gap-1.5 h-9 px-3.5 rounded-md border border-line bg-surface text-grafite text-xs font-semibold hover:bg-osso transition-colors shadow-xs"
+              className="btn btn-ghost h-10 px-3.5 text-xs"
             >
               <UserPlus size={14} />
-              <span>Descobrir Atletas</span>
+              <span>Atletas</span>
             </Link>
             <Link
               href="/comunidade/desafios"
-              className="inline-flex items-center gap-1.5 h-9 px-3.5 rounded-md border border-line bg-surface text-grafite text-xs font-semibold hover:bg-osso transition-colors shadow-xs"
+              className="btn btn-ghost h-10 px-3.5 text-xs"
             >
               <Trophy size={14} />
               <span>Desafios</span>
             </Link>
-            <Link
-              href="/equipes"
-              className="inline-flex items-center gap-1.5 h-9 px-3.5 rounded-md border border-line bg-surface text-grafite text-xs font-semibold hover:bg-osso transition-colors shadow-xs"
-            >
+            <Link href="/equipes" className="btn btn-dark h-10 px-3.5 text-xs">
               <Users size={14} />
               <span>Equipes</span>
             </Link>
           </div>
         </div>
 
-        <Suspense
-          fallback={
-            <div className="py-20 text-center text-muted font-mono text-sm animate-pulse">
-              Carregando publicações esportivas...
-            </div>
-          }
-        >
+        <Suspense fallback={<CommunitySkeleton />}>
           <FeedLoader tab={currentTab} />
         </Suspense>
       </main>

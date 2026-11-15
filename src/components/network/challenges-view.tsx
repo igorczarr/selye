@@ -3,7 +3,16 @@
 import { useState, useTransition } from "react";
 import Link from "next/link";
 import { joinChallenge, getChallengeLeaderboard } from "@/actions/challenges";
-import { Trophy, Calendar, Target, Users, CheckCircle2, ArrowLeft, ChevronDown, ChevronUp } from "lucide-react";
+import {
+  Trophy,
+  Calendar,
+  Target,
+  Users,
+  CheckCircle2,
+  ArrowLeft,
+  ChevronDown,
+  ChevronUp,
+} from "lucide-react";
 
 interface Challenge {
   id: string;
@@ -26,8 +35,12 @@ interface ChallengesViewProps {
 
 export function ChallengesView({ initialChallenges }: ChallengesViewProps) {
   const [challenges, setChallenges] = useState(initialChallenges);
-  const [expandedLeaderboard, setExpandedLeaderboard] = useState<string | null>(null);
-  const [leaderboardData, setLeaderboardData] = useState<Record<string, any>>({});
+  const [expandedLeaderboard, setExpandedLeaderboard] = useState<string | null>(
+    null
+  );
+  const [leaderboardData, setLeaderboardData] = useState<Record<string, any>>(
+    {}
+  );
   const [loadingLeaderboard, setLoadingLeaderboard] = useState(false);
   const [isPending, startTransition] = useTransition();
 
@@ -35,7 +48,11 @@ export function ChallengesView({ initialChallenges }: ChallengesViewProps) {
     setChallenges((prev) =>
       prev.map((c) =>
         c.id === challengeId
-          ? { ...c, hasJoined: true, participantsCount: c.participantsCount + 1 }
+          ? {
+              ...c,
+              hasJoined: true,
+              participantsCount: c.participantsCount + 1,
+            }
           : c
       )
     );
@@ -70,28 +87,28 @@ export function ChallengesView({ initialChallenges }: ChallengesViewProps) {
       case "technical":
         return "Qualidade Técnica";
       default:
-        return "Desafio";
+        return "Ciclo Coletivo";
     }
   };
 
   return (
-    <div className="flex flex-col gap-6 max-w-4xl mx-auto w-full">
-      {/* Header */}
+    <div className="flex flex-col gap-6 max-w-4xl mx-auto w-full fade-up">
+      {/* Cabeçalho */}
       <div>
         <Link
           href="/comunidade"
-          className="inline-flex items-center gap-1 text-xs text-muted hover:text-grafite mb-2"
+          className="inline-flex items-center gap-1.5 text-xs font-mono text-muted hover:text-foreground mb-3 transition-colors"
         >
-          <ArrowLeft size={13} />
+          <ArrowLeft size={14} />
           <span>Voltar ao Mural</span>
         </Link>
         <div className="flex items-center gap-2">
-          <Trophy size={20} className="text-profundo" />
-          <span className="t-label block">Gamificação Ética (§13 e §15)</span>
+          <Trophy size={16} className="text-accent-text" />
+          <span className="t-label">Compromisso Coletivo</span>
         </div>
         <h1 className="t-h1 mt-1">Desafios Comunitários</h1>
-        <p className="text-muted text-xs mt-1">
-          Desafios focados em consistência, autonomia e hábitos esportivos saudáveis. Sem rankings tóxicos de volume.
+        <p className="text-muted text-sm mt-1">
+          Ciclos focados em assiduidade, autonomia e regularidade semanal — sem estímulo ao excesso de volume.
         </p>
       </div>
 
@@ -100,43 +117,61 @@ export function ChallengesView({ initialChallenges }: ChallengesViewProps) {
         {challenges.map((challenge) => {
           const isExpanded = expandedLeaderboard === challenge.id;
           const currentBoard = leaderboardData[challenge.id];
+          const progressPct = Math.min(
+            100,
+            Math.round(
+              (Number(challenge.userProgress) /
+                Math.max(1, Number(challenge.targetValue || 4))) *
+                100
+            )
+          );
 
           return (
-            <div
+            <article
               key={challenge.id}
-              className="rounded-lg border border-line bg-surface p-6 flex flex-col gap-4 shadow-xs"
+              className="card p-6 flex flex-col gap-4"
             >
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-3">
                 <div>
-                  <div className="flex items-center gap-2">
-                    <span className="px-2 py-0.5 rounded text-[10px] font-mono bg-osso text-profundo border border-line font-semibold">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="chip">
                       {getTypeText(challenge.challengeType)}
                     </span>
-                    <span className="t-data text-xs text-muted flex items-center gap-1">
+                    <span className="t-data text-xs text-muted flex items-center gap-1.5">
                       <Calendar size={12} />
-                      {new Date(challenge.startDate).toLocaleDateString("pt-BR")} até{" "}
-                      {new Date(challenge.endDate).toLocaleDateString("pt-BR")}
+                      <span>
+                        {new Date(challenge.startDate).toLocaleDateString(
+                          "pt-BR"
+                        )}{" "}
+                        —{" "}
+                        {new Date(challenge.endDate).toLocaleDateString(
+                          "pt-BR"
+                        )}
+                      </span>
                     </span>
                   </div>
-                  <h3 className="t-h2 mt-2">{challenge.title}</h3>
+                  <h2 className="t-h2 mt-2">{challenge.title}</h2>
                 </div>
 
                 <div className="flex items-center gap-2 shrink-0">
-                  <div className="flex items-center gap-1 text-xs text-muted px-2.5 py-1 rounded bg-osso border border-line">
+                  <span className="chip">
                     <Users size={13} />
-                    <span className="font-mono">{challenge.participantsCount} atletas</span>
-                  </div>
+                    <span className="t-data">
+                      {challenge.participantsCount} atletas
+                    </span>
+                  </span>
 
                   {challenge.hasJoined ? (
-                    <span className="inline-flex items-center gap-1 px-3 py-1.5 rounded-md bg-profundo/10 text-profundo border border-profundo/30 text-xs font-semibold">
-                      <CheckCircle2 size={13} />
+                    <span className="inline-flex items-center gap-1.5 h-9 px-3.5 rounded-lg bg-lima/25 text-foreground text-xs font-semibold">
+                      <CheckCircle2 size={14} className="text-accent-text" />
                       <span>Inscrito</span>
                     </span>
                   ) : (
                     <button
+                      type="button"
                       onClick={() => handleJoin(challenge.id)}
                       disabled={isPending}
-                      className="px-4 py-1.5 rounded-md bg-grafite text-osso hover:bg-noite text-xs font-semibold shadow-xs cursor-pointer"
+                      className="btn btn-primary h-9 px-4 text-xs"
                     >
                       Participar
                     </button>
@@ -145,82 +180,90 @@ export function ChallengesView({ initialChallenges }: ChallengesViewProps) {
               </div>
 
               {challenge.description && (
-                <p className="text-xs text-foreground/80 leading-relaxed">
+                <p className="text-xs text-muted leading-relaxed">
                   {challenge.description}
                 </p>
               )}
 
-              {/* Barra de Progresso do Usuário (se inscrito) */}
+              {/* Progresso do Atleta Inscrito */}
               {challenge.hasJoined && (
-                <div className="p-3 rounded-md bg-osso/40 border border-line/60 flex flex-col gap-1.5">
+                <div className="p-4 rounded-xl bg-foreground/[0.02] border border-line flex flex-col gap-2">
                   <div className="flex justify-between items-center text-xs">
-                    <span className="font-semibold text-grafite flex items-center gap-1">
-                      <Target size={13} className="text-profundo" />
-                      Seu Progresso
+                    <span className="font-semibold text-foreground flex items-center gap-1.5">
+                      <Target size={14} className="text-accent-text" />
+                      <span>Seu Progresso no Ciclo</span>
                     </span>
-                    <span className="font-mono text-profundo font-bold">
-                      {challenge.userProgress} / {challenge.targetValue || "4"} {challenge.targetMetric || "sessões"}
+                    <span className="t-data text-accent-text font-semibold">
+                      {challenge.userProgress} / {challenge.targetValue || "4"}{" "}
+                      {challenge.targetMetric || "sessões"} ({progressPct}%)
                     </span>
                   </div>
-                  <div className="w-full h-2 rounded-full bg-line overflow-hidden">
+                  <div className="w-full h-2 rounded-full bg-foreground/10 overflow-hidden">
                     <div
-                      className="h-full bg-profundo rounded-full transition-all duration-500"
-                      style={{
-                        width: `${Math.min(
-                          100,
-                          (Number(challenge.userProgress) / Number(challenge.targetValue || 4)) * 100
-                        )}%`,
-                      }}
+                      className="h-full bg-lima rounded-full transition-all duration-500"
+                      style={{ width: `${progressPct}%` }}
                     />
                   </div>
                 </div>
               )}
 
-              {/* Botão para Expandir Quadro de Consistência */}
-              <div className="border-t border-line/60 pt-3 flex justify-between items-center">
+              {/* Controle do Quadro de Participantes */}
+              <div className="border-t border-line pt-3 flex justify-between items-center">
                 <button
+                  type="button"
+                  aria-expanded={isExpanded}
                   onClick={() => toggleLeaderboard(challenge.id)}
-                  className="text-xs text-profundo hover:underline font-semibold flex items-center gap-1 cursor-pointer"
+                  className="text-xs text-accent-text hover:underline font-semibold flex items-center gap-1.5 cursor-pointer"
                 >
-                  <span>{isExpanded ? "Ocultar Quadro de Participantes" : "Ver Quadro de Participantes"}</span>
-                  {isExpanded ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+                  <span>
+                    {isExpanded
+                      ? "Ocultar Quadro de Participantes"
+                      : "Ver Quadro de Participantes"}
+                  </span>
+                  {isExpanded ? (
+                    <ChevronUp size={14} />
+                  ) : (
+                    <ChevronDown size={14} />
+                  )}
                 </button>
-                <span className="t-aux text-muted">Adesão & Consistência</span>
+                <span className="t-aux text-muted">Adesão & Constância</span>
               </div>
 
-              {/* Quadro de Participantes Expandido */}
               {isExpanded && (
-                <div className="mt-2 border-t border-line/40 pt-3">
+                <div className="border-t border-line/60 pt-3">
                   {loadingLeaderboard && !currentBoard ? (
-                    <p className="text-xs text-muted font-mono animate-pulse">Carregando participantes...</p>
+                    <div className="space-y-2" aria-busy="true">
+                      <div className="skeleton h-10 w-full" />
+                      <div className="skeleton h-10 w-full" />
+                    </div>
                   ) : currentBoard && currentBoard.participants.length > 0 ? (
-                    <div className="space-y-1.5">
+                    <div className="space-y-2">
                       {currentBoard.participants.map((p: any, idx: number) => (
                         <div
                           key={p.id}
-                          className="flex items-center justify-between p-2 rounded bg-osso/20 text-xs border border-line/40"
+                          className="flex items-center justify-between p-2.5 rounded-lg bg-foreground/[0.02] text-xs border border-line"
                         >
-                          <div className="flex items-center gap-2">
-                            <span className="w-5 text-center font-mono font-bold text-muted">
-                              {idx + 1}º
+                          <div className="flex items-center gap-2.5">
+                            <span className="w-6 text-center t-data font-semibold text-muted">
+                              {String(idx + 1).padStart(2, "0")}
                             </span>
-                            <div className="w-6 h-6 rounded-full bg-grafite text-osso flex items-center justify-center font-bold text-[10px]">
+                            <div className="w-7 h-7 rounded-full bg-foreground text-background flex items-center justify-center font-semibold text-xs">
                               {p.name?.[0] || "A"}
                             </div>
                             <Link
                               href={`/atleta/${p.username}`}
-                              className="font-medium text-grafite hover:underline"
+                              className="font-medium text-foreground hover:underline"
                             >
                               {p.name}
                             </Link>
                           </div>
                           <div className="flex items-center gap-2">
-                            <span className="font-mono text-profundo font-semibold">
+                            <span className="t-data text-accent-text font-semibold">
                               {p.progressValue} / {challenge.targetValue}
                             </span>
                             {p.completed && (
-                              <span className="px-1.5 py-0.5 rounded text-[10px] bg-lima text-grafite font-bold font-mono">
-                                META CUMPRIDA
+                              <span className="px-2 py-0.5 rounded-full text-xs bg-lima text-grafite font-semibold font-mono">
+                                Concluído
                               </span>
                             )}
                           </div>
@@ -228,11 +271,13 @@ export function ChallengesView({ initialChallenges }: ChallengesViewProps) {
                       ))}
                     </div>
                   ) : (
-                    <p className="text-xs text-muted italic">Nenhum participante registrado ainda. Seja o pioneiro!</p>
+                    <p className="text-xs text-muted">
+                      Nenhum participante listado ainda. Participe para inaugurar o quadro!
+                    </p>
                   )}
                 </div>
               )}
-            </div>
+            </article>
           );
         })}
       </div>

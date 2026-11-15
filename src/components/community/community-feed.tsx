@@ -2,13 +2,14 @@
 
 import { useState, useTransition } from "react";
 import Link from "next/link";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useRouter } from "next/navigation";
 import { createPost, reactToPost, addComment } from "@/actions/community";
 import { blockUser, reportContent } from "@/actions/network";
 import {
   MessageSquare,
   Flame,
   ThumbsUp,
+  Dumbbell,
   Send,
   Share2,
   MoreHorizontal,
@@ -17,6 +18,7 @@ import {
   CornerDownRight,
   X,
   CheckCircle2,
+  Check,
 } from "lucide-react";
 
 interface CommunityFeedProps {
@@ -24,22 +26,31 @@ interface CommunityFeedProps {
   activeTab?: "explore" | "teams" | "following";
 }
 
+const MODALITY_LABELS: Record<string, string> = {
+  strength: "Musculação",
+  calisthenics: "Calistenia",
+  functional: "Funcional",
+  running: "Corrida",
+};
+
 export function CommunityFeed({
   posts: initialPosts,
   activeTab = "explore",
 }: CommunityFeedProps) {
   const router = useRouter();
-  const searchParams = useSearchParams();
   const [composerText, setComposerText] = useState("");
   const [commentInput, setCommentInput] = useState<Record<string, string>>({});
-  const [activeCommentPostId, setActiveCommentPostId] = useState<string | null>(null);
+  const [activeCommentPostId, setActiveCommentPostId] = useState<string | null>(
+    null
+  );
   const [replyingToComment, setReplyingToComment] = useState<{
     id: string;
     authorName: string;
     postId: string;
   } | null>(null);
+  const [copiedPostId, setCopiedPostId] = useState<string | null>(null);
 
-  // Moderação
+  // Moderação (Denúncia e Bloqueio sem alert/confirm nativo)
   const [reportModalOpen, setReportModalOpen] = useState(false);
   const [reportTarget, setReportTarget] = useState<{
     type: "post" | "comment" | "user";
@@ -47,8 +58,15 @@ export function CommunityFeed({
     authorName: string;
     authorId: string;
   } | null>(null);
-  const [reportReason, setReportReason] = useState("Spam ou publicidade indevida");
+  const [reportReason, setReportReason] = useState(
+    "Spam ou publicidade indevida"
+  );
   const [reportSuccess, setReportSuccess] = useState(false);
+
+  const [blockTarget, setBlockTarget] = useState<{
+    authorId: string;
+    authorUsername: string;
+  } | null>(null);
 
   const [activeMenuPostId, setActiveMenuPostId] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
@@ -63,7 +81,7 @@ export function CommunityFeed({
 
     startTransition(async () => {
       await createPost({
-        contentText: composerText,
+        contentText: composerText.trim(),
         postType: "general_post",
         visibility: "public",
       });
@@ -87,19 +105,36 @@ export function CommunityFeed({
         : undefined;
 
     startTransition(async () => {
-      await addComment(postId, text, parentId);
+      await addComment(postId, text.trim(), parentId);
       setCommentInput((prev) => ({ ...prev, [postId]: "" }));
       setReplyingToComment(null);
     });
   };
 
-  const handleBlockAuthor = (authorId: string, authorName: string) => {
-    if (confirm(`Deseja realmente bloquear @${authorName}? O conteúdo deste usuário não será mais exibido no seu feed.`)) {
-      startTransition(async () => {
-        await blockUser(authorId);
-        setActiveMenuPostId(null);
-        setReportModalOpen(false);
-      });
+  const confirmBlockAuthor = () => {
+    if (!blockTarget) return;
+    startTransition(async () => {
+      await blockUser(blockTarget.authorId);
+      setBlockTarget(null);
+      setActiveMenuPostId(null);
+    });
+  };
+
+  const handleShare = async (postId: string, authorUsername: string) => {
+    const url = `${window.location.origin}/atleta/${authorUsername}`;
+    try {
+      if (navigator.share) {
+        await navigator.share({
+          title: "Selye · Registro Esportivo",
+          url,
+        });
+      } else {
+        await navigator.clipboard.writeText(url);
+        setCopiedPostId(postId);
+        setTimeout(() => setCopiedPostId(null), 2000);
+      }
+    } catch {
+      // Usuário cancelou compartilhamento
     }
   };
 
@@ -117,53 +152,66 @@ export function CommunityFeed({
         setReportSuccess(false);
         setReportModalOpen(false);
         setReportTarget(null);
-      }, 1800);
+      }, 1600);
     });
   };
 
   return (
-    <div className="flex flex-col gap-6 max-w-2xl mx-auto w-full">
-      {/* Abas do Feed (§11.1) */}
-      <div className="flex border-b border-line bg-surface rounded-t-lg p-1.5 gap-1 shadow-xs">
+    <div className="flex flex-col gap-6 max-w-2xl mx-auto w-full fade-up">
+      {/* Navegação por Abas */}
+      <div
+        role="tablist"
+        aria-label="Filtrar publicações do mural"
+        className="flex bg-surface border border-line rounded-xl p-1 gap-1"
+      >
         {[
           { id: "explore", label: "Explorar Mural" },
           { id: "teams", label: "Minhas Equipes" },
           { id: "following", label: "Seguindo" },
-        ].map((tab) => (
-          <button
-            key={tab.id}
-            onClick={() => handleTabChange(tab.id)}
-            className={`flex-1 py-2 text-xs font-semibold rounded-md transition-colors cursor-pointer ${
-              activeTab === tab.id
-                ? "bg-grafite text-osso shadow-xs"
-                : "text-muted hover:text-grafite hover:bg-osso/60"
-            }`}
-          >
-            {tab.label}
-          </button>
-        ))}
+        ].map((tab) => {
+          const active = activeTab === tab.id;
+          return (
+            <button
+              key={tab.id}
+              type="button"
+              role="tab"
+              aria-selected={active}
+              onClick={() => handleTabChange(tab.id)}
+              className={`flex-1 h-10 text-xs font-semibold rounded-lg transition-colors cursor-pointer ${
+                active
+                  ? "bg-foreground text-background"
+                  : "text-muted hover:text-foreground hover:bg-foreground/5"
+              }`}
+            >
+              {tab.label}
+            </button>
+          );
+        })}
       </div>
 
-      {/* Caixa de Publicação de Comunidade */}
-      <form
-        onSubmit={handleCreatePost}
-        className="rounded-lg border border-line bg-surface p-4 flex flex-col gap-3 shadow-xs"
-      >
+      {/* Compositor de Publicação */}
+      <form onSubmit={handleCreatePost} className="card p-5 flex flex-col gap-3">
+        <label htmlFor="community-composer" className="sr-only">
+          Escrever publicação na comunidade
+        </label>
         <textarea
+          id="community-composer"
           rows={2}
           value={composerText}
           onChange={(e) => setComposerText(e.target.value)}
-          placeholder="Compartilhe um aprendizado técnico, resultado ou mensagem de consistência..."
-          className="w-full p-3 rounded-md border border-line bg-background text-sm focus:outline-none focus:ring-1 focus:ring-profundo"
+          placeholder="Compartilhe um aprendizado técnico, marco de consistência ou reflexão de treino..."
+          className="input h-auto py-3 text-sm resize-y"
         />
-        <div className="flex justify-between items-center">
-          <span className="t-aux text-muted">Apoio mútuo e sem espetáculo</span>
+        <div className="flex justify-between items-center pt-1">
+          <span className="t-aux text-muted">
+            Ambiente de apoio técnico · Sem vaidade
+          </span>
           <button
             type="submit"
             disabled={isPending || !composerText.trim()}
-            className="inline-flex items-center gap-1.5 px-4 py-2 rounded-md bg-grafite text-osso font-semibold text-xs hover:bg-noite disabled:opacity-40 transition-colors cursor-pointer"
+            className="btn btn-primary h-10 px-4 text-xs"
           >
-            <Send size={13} />
+            <Send size={14} />
             <span>Publicar</span>
           </button>
         </div>
@@ -171,29 +219,31 @@ export function CommunityFeed({
 
       {/* Lista de Publicações */}
       {initialPosts.length === 0 ? (
-        <div className="py-16 text-center text-muted text-sm border border-line rounded-lg bg-surface p-6">
-          Nenhuma publicação encontrada nesta aba. Conecte-se com mais atletas ou compartilhe seu treino!
+        <div className="card p-12 text-center flex flex-col items-center gap-2">
+          <p className="font-semibold text-foreground text-sm">
+            Nenhuma publicação encontrada nesta aba
+          </p>
+          <p className="text-muted text-xs max-w-sm">
+            Conecte-se com outros atletas ou compartilhe sua primeira nota de treino acima.
+          </p>
         </div>
       ) : (
         <div className="flex flex-col gap-4">
           {initialPosts.map((post) => (
-            <article
-              key={post.id}
-              className="rounded-lg border border-line bg-surface p-5 flex flex-col gap-4 shadow-xs relative"
-            >
+            <article key={post.id} className="card p-5 sm:p-6 flex flex-col gap-4 relative">
               {/* Cabeçalho do Post */}
-              <div className="flex items-center justify-between">
+              <div className="flex items-center justify-between gap-2">
                 <div className="flex items-center gap-3">
                   <Link
                     href={`/atleta/${post.authorUsername}`}
-                    className="w-10 h-10 rounded-full bg-grafite text-osso flex items-center justify-center font-bold text-sm hover:opacity-90 transition-opacity"
+                    className="w-10 h-10 rounded-full bg-foreground text-background flex items-center justify-center font-semibold text-sm hover:opacity-90 transition-opacity shrink-0"
                   >
                     {post.authorName?.[0] || "A"}
                   </Link>
                   <div>
                     <Link
                       href={`/atleta/${post.authorUsername}`}
-                      className="font-semibold text-sm hover:underline text-grafite"
+                      className="font-semibold text-sm text-foreground hover:underline"
                     >
                       {post.authorName}
                     </Link>
@@ -206,28 +256,30 @@ export function CommunityFeed({
 
                 <div className="flex items-center gap-2">
                   {post.postType === "workout_report" && (
-                    <span className="px-2 py-0.5 rounded text-[10px] font-mono bg-lima text-grafite font-bold">
+                    <span className="px-2.5 py-0.5 rounded-full text-xs font-mono bg-lima text-grafite font-semibold">
                       PÓS-TREINO
                     </span>
                   )}
 
-                  {/* Menu de Moderação / Opções */}
+                  {/* Menu de Moderação */}
                   <div className="relative">
                     <button
+                      type="button"
+                      aria-label="Mais opções da publicação"
                       onClick={() =>
                         setActiveMenuPostId(
                           activeMenuPostId === post.id ? null : post.id
                         )
                       }
-                      className="p-1 rounded text-muted hover:text-grafite hover:bg-osso transition-colors cursor-pointer"
-                      title="Opções"
+                      className="btn btn-ghost h-9 w-9 p-0"
                     >
                       <MoreHorizontal size={16} />
                     </button>
 
                     {activeMenuPostId === post.id && (
-                      <div className="absolute right-0 mt-1 w-48 rounded-md border border-line bg-surface shadow-md py-1 z-20 text-xs">
+                      <div className="absolute right-0 mt-1 w-48 rounded-xl border border-line bg-surface shadow-lg py-1.5 z-20 text-xs">
                         <button
+                          type="button"
                           onClick={() => {
                             setReportTarget({
                               type: "post",
@@ -238,19 +290,24 @@ export function CommunityFeed({
                             setReportModalOpen(true);
                             setActiveMenuPostId(null);
                           }}
-                          className="w-full text-left px-3 py-2 flex items-center gap-2 hover:bg-osso text-amber-700 cursor-pointer"
+                          className="w-full text-left px-3.5 py-2 flex items-center gap-2 hover:bg-foreground/5 text-foreground cursor-pointer"
                         >
-                          <Flag size={13} />
+                          <Flag size={14} className="text-accent-text" />
                           <span>Denunciar publicação</span>
                         </button>
                         <button
-                          onClick={() =>
-                            handleBlockAuthor(post.userId, post.authorUsername)
-                          }
-                          className="w-full text-left px-3 py-2 flex items-center gap-2 hover:bg-osso text-red-600 cursor-pointer border-t border-line/50"
+                          type="button"
+                          onClick={() => {
+                            setBlockTarget({
+                              authorId: post.userId,
+                              authorUsername: post.authorUsername,
+                            });
+                            setActiveMenuPostId(null);
+                          }}
+                          className="w-full text-left px-3.5 py-2 flex items-center gap-2 hover:bg-foreground/5 text-muted hover:text-foreground cursor-pointer border-t border-line"
                         >
-                          <UserX size={13} />
-                          <span>Bloquear atleta</span>
+                          <UserX size={14} />
+                          <span>Bloquear @{post.authorUsername}</span>
                         </button>
                       </div>
                     )}
@@ -258,43 +315,48 @@ export function CommunityFeed({
                 </div>
               </div>
 
-              {/* Conteúdo em Texto */}
+              {/* Texto da Publicação */}
               {post.contentText && (
                 <p className="text-sm leading-relaxed text-foreground whitespace-pre-line">
                   {post.contentText}
                 </p>
               )}
 
-              {/* Card de Relatório de Treinamento (§11.3 & §12.2 O Ritual do PÓS) */}
+              {/* Relatório Pós-Treino Integrado */}
               {post.workoutReport && (
-                <div className="rounded-md border border-line bg-osso/30 p-4 flex flex-col gap-3">
-                  <div className="flex items-center justify-between border-b border-line/60 pb-2">
-                    <span className="t-label !text-profundo">SELYE TRAINING REPORT</span>
+                <div className="rounded-xl border border-line bg-foreground/[0.02] p-4 flex flex-col gap-3">
+                  <div className="flex items-center justify-between border-b border-line pb-2">
+                    <span className="t-label !text-accent-text">
+                      SELYE TRAINING REPORT
+                    </span>
                     <span className="t-aux text-muted">
-                      Modalidade: {post.workoutReport.modality}
+                      {MODALITY_LABELS[post.workoutReport.modality] ||
+                        post.workoutReport.modality}
                     </span>
                   </div>
 
-                  <h4 className="t-h3">{post.workoutReport.title}</h4>
+                  <h3 className="t-h3 text-foreground">
+                    {post.workoutReport.title}
+                  </h3>
 
-                  <div className="grid grid-cols-3 gap-2 py-1">
-                    <div className="p-2 rounded bg-surface border border-line/70 text-center">
-                      <span className="t-label !text-[9px]">Duração</span>
-                      <p className="t-data text-base font-semibold">
+                  <div className="grid grid-cols-3 gap-2.5 pt-1">
+                    <div className="p-2.5 rounded-lg bg-surface border border-line text-center">
+                      <span className="t-label block">Duração</span>
+                      <p className="t-data text-sm font-semibold text-foreground mt-0.5">
                         {post.workoutReport.durationMinutes
                           ? `${post.workoutReport.durationMinutes} min`
-                          : "48 min"}
+                          : "45 min"}
                       </p>
                     </div>
-                    <div className="p-2 rounded bg-surface border border-line/70 text-center">
-                      <span className="t-label !text-[9px]">Intensidade</span>
-                      <p className="t-data text-base font-semibold">
+                    <div className="p-2.5 rounded-lg bg-surface border border-line text-center">
+                      <span className="t-label block">Esforço</span>
+                      <p className="t-data text-sm font-semibold text-foreground mt-0.5">
                         RPE {post.workoutReport.rpe || 8}
                       </p>
                     </div>
-                    <div className="p-2 rounded bg-surface border border-line/70 text-center">
-                      <span className="t-label !text-[9px]">Status</span>
-                      <p className="t-data text-base font-semibold text-profundo">
+                    <div className="p-2.5 rounded-lg bg-surface border border-line text-center">
+                      <span className="t-label block">Status</span>
+                      <p className="t-data text-sm font-semibold text-accent-text mt-0.5">
                         Concluído
                       </p>
                     </div>
@@ -302,79 +364,106 @@ export function CommunityFeed({
                 </div>
               )}
 
-              {/* Barra de Interação e Reações (§11.2) */}
-              <div className="flex items-center justify-between pt-2 border-t border-line text-xs font-mono">
+              {/* Barra de Reações e Comentários */}
+              <div className="flex items-center justify-between pt-3 border-t border-line text-xs font-mono">
                 <div className="flex items-center gap-1.5">
                   <button
+                    type="button"
+                    aria-pressed={post.userReaction === "like"}
                     onClick={() => handleReaction(post.id, "like")}
-                    className={`flex items-center gap-1 px-2.5 py-1 rounded transition-colors cursor-pointer ${
+                    className={`h-9 px-3 rounded-lg flex items-center gap-1.5 transition-colors cursor-pointer ${
                       post.userReaction === "like"
-                        ? "bg-profundo/10 text-profundo font-bold border border-profundo/30"
-                        : "hover:bg-osso text-muted hover:text-grafite"
+                        ? "bg-lima text-grafite font-semibold"
+                        : "bg-foreground/[0.04] text-muted hover:text-foreground"
                     }`}
+                    title="Apoiar"
                   >
                     <ThumbsUp size={14} />
                     <span>{post.reactions?.length || 0}</span>
                   </button>
 
                   <button
+                    type="button"
+                    aria-pressed={post.userReaction === "muscle"}
                     onClick={() => handleReaction(post.id, "muscle")}
-                    className={`flex items-center gap-1 px-2.5 py-1 rounded transition-colors cursor-pointer ${
+                    className={`h-9 px-3 rounded-lg flex items-center gap-1.5 transition-colors cursor-pointer ${
                       post.userReaction === "muscle"
-                        ? "bg-amber-100/50 border border-amber-300"
-                        : "hover:bg-osso"
+                        ? "bg-lima text-grafite font-semibold"
+                        : "bg-foreground/[0.04] text-muted hover:text-foreground"
                     }`}
-                    title="Músculo"
+                    title="Força técnica"
                   >
-                    <span>💪</span>
+                    <Dumbbell size={14} />
                   </button>
 
                   <button
+                    type="button"
+                    aria-pressed={post.userReaction === "fire"}
                     onClick={() => handleReaction(post.id, "fire")}
-                    className={`flex items-center gap-1 px-2.5 py-1 rounded transition-colors cursor-pointer ${
+                    className={`h-9 px-3 rounded-lg flex items-center gap-1.5 transition-colors cursor-pointer ${
                       post.userReaction === "fire"
-                        ? "bg-amber-100/50 border border-amber-300"
-                        : "hover:bg-osso text-muted hover:text-grafite"
+                        ? "bg-lima text-grafite font-semibold"
+                        : "bg-foreground/[0.04] text-muted hover:text-foreground"
                     }`}
-                    title="Fogo"
+                    title="Constância"
                   >
-                    <Flame size={14} className="text-amber-600" />
+                    <Flame size={14} />
                   </button>
 
                   <button
+                    type="button"
                     onClick={() =>
                       setActiveCommentPostId(
                         activeCommentPostId === post.id ? null : post.id
                       )
                     }
-                    className="flex items-center gap-1 px-2.5 py-1 rounded hover:bg-osso transition-colors text-muted hover:text-grafite cursor-pointer"
+                    className="h-9 px-3 rounded-lg bg-foreground/[0.04] text-muted hover:text-foreground flex items-center gap-1.5 transition-colors cursor-pointer"
                   >
                     <MessageSquare size={14} />
                     <span>{post.comments?.length || 0}</span>
                   </button>
                 </div>
 
-                <button className="flex items-center gap-1 text-muted hover:text-grafite cursor-pointer">
-                  <Share2 size={13} />
-                  <span>Compartilhar</span>
+                <button
+                  type="button"
+                  onClick={() => handleShare(post.id, post.authorUsername)}
+                  className="btn btn-ghost h-9 px-3 text-xs"
+                >
+                  {copiedPostId === post.id ? (
+                    <>
+                      <Check size={13} className="text-accent-text" />
+                      <span>Copiado</span>
+                    </>
+                  ) : (
+                    <>
+                      <Share2 size={13} />
+                      <span>Compartilhar</span>
+                    </>
+                  )}
                 </button>
               </div>
 
-              {/* Seção de Comentários Aninhados (§11.2) */}
+              {/* Comentários Aninhados */}
               {activeCommentPostId === post.id && (
                 <div className="border-t border-line pt-3 flex flex-col gap-3">
-                  {/* Indicador de Resposta Aninhada */}
                   {replyingToComment && replyingToComment.postId === post.id && (
-                    <div className="flex items-center justify-between bg-osso/50 px-2.5 py-1 rounded text-[11px] text-profundo">
-                      <span className="flex items-center gap-1">
-                        <CornerDownRight size={12} />
-                        Respondendo a <strong>{replyingToComment.authorName}</strong>
+                    <div className="flex items-center justify-between bg-foreground/5 px-3 py-1.5 rounded-lg text-xs text-accent-text">
+                      <span className="flex items-center gap-1.5">
+                        <CornerDownRight size={13} />
+                        <span>
+                          Respondendo a{" "}
+                          <strong className="text-foreground">
+                            {replyingToComment.authorName}
+                          </strong>
+                        </span>
                       </span>
                       <button
+                        type="button"
+                        aria-label="Cancelar resposta"
                         onClick={() => setReplyingToComment(null)}
-                        className="text-muted hover:text-grafite"
+                        className="text-muted hover:text-foreground cursor-pointer"
                       >
-                        <X size={12} />
+                        <X size={14} />
                       </button>
                     </div>
                   )}
@@ -392,39 +481,39 @@ export function CommunityFeed({
                       placeholder={
                         replyingToComment && replyingToComment.postId === post.id
                           ? `Responder a ${replyingToComment.authorName}...`
-                          : "Deixe um incentivo técnico ou comentário..."
+                          : "Escreva um comentário construtivo..."
                       }
-                      className="flex-1 h-9 px-3 rounded border border-line bg-background text-xs focus:outline-none focus:ring-1 focus:ring-profundo"
+                      className="input h-10 text-xs flex-1"
                     />
                     <button
+                      type="button"
                       onClick={() => handleAddComment(post.id)}
-                      className="h-9 px-3 rounded bg-grafite text-osso font-semibold text-xs hover:bg-noite cursor-pointer"
+                      className="btn btn-dark h-10 px-4 text-xs shrink-0"
                     >
                       Enviar
                     </button>
                   </div>
 
                   {post.comments && post.comments.length > 0 && (
-                    <div className="flex flex-col gap-2 mt-2">
+                    <div className="flex flex-col gap-2 mt-1">
                       {post.comments.map((c: any) => {
-                        const isReply = !!c.parentCommentId;
+                        const isReply = Boolean(c.parentCommentId);
                         return (
                           <div
                             key={c.id}
-                            className={`text-xs p-2.5 rounded ${
-                              isReply
-                                ? "bg-osso/20 ml-5 border-l-2 border-profundo/50"
-                                : "bg-osso/30"
+                            className={`text-xs p-3 rounded-lg border border-line/60 bg-foreground/[0.02] ${
+                              isReply ? "ml-5 border-l-2 border-l-profundo" : ""
                             }`}
                           >
                             <div className="flex items-center justify-between mb-1">
                               <Link
                                 href={`/atleta/${c.authorUsername}`}
-                                className="font-semibold text-grafite hover:underline"
+                                className="font-semibold text-foreground hover:underline"
                               >
                                 {c.authorName}
                               </Link>
                               <button
+                                type="button"
                                 onClick={() =>
                                   setReplyingToComment({
                                     id: c.id,
@@ -432,13 +521,15 @@ export function CommunityFeed({
                                     postId: post.id,
                                   })
                                 }
-                                className="text-[10px] text-muted hover:text-profundo flex items-center gap-1 cursor-pointer"
+                                className="text-xs text-muted hover:text-foreground flex items-center gap-1 cursor-pointer font-mono"
                               >
-                                <CornerDownRight size={10} />
+                                <CornerDownRight size={11} />
                                 <span>Responder</span>
                               </button>
                             </div>
-                            <span className="text-foreground">{c.contentText}</span>
+                            <p className="text-foreground/90 leading-relaxed">
+                              {c.contentText}
+                            </p>
                           </div>
                         );
                       })}
@@ -451,18 +542,70 @@ export function CommunityFeed({
         </div>
       )}
 
-      {/* Modal de Moderação e Denúncia (§11.5) */}
-      {reportModalOpen && reportTarget && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
-          <div className="bg-surface border border-line rounded-lg max-w-md w-full p-6 shadow-xl flex flex-col gap-4">
+      {/* Modal de Confirmação de Bloqueio (substitui confirm() nativo) */}
+      {blockTarget && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          className="fixed inset-0 z-50 flex items-center justify-center bg-noite/70 backdrop-blur-xs p-4"
+        >
+          <div className="card max-w-md w-full p-6 flex flex-col gap-4 shadow-xl fade-up">
             <div className="flex items-center justify-between border-b border-line pb-3">
-              <div className="flex items-center gap-2 text-amber-700">
-                <Flag size={18} />
-                <h3 className="font-semibold text-sm">Denunciar à Moderação</h3>
+              <div className="flex items-center gap-2 text-foreground">
+                <UserX size={18} className="text-accent-text" />
+                <h3 className="t-h3">Bloquear @{blockTarget.authorUsername}?</h3>
               </div>
               <button
+                type="button"
+                aria-label="Fechar confirmação"
+                onClick={() => setBlockTarget(null)}
+                className="btn btn-ghost h-8 w-8 p-0"
+              >
+                <X size={16} />
+              </button>
+            </div>
+            <p className="text-xs text-muted leading-relaxed">
+              As publicações e interações deste atleta deixarão de aparecer no seu mural esportivo imediatamente.
+            </p>
+            <div className="flex justify-end gap-2 pt-2">
+              <button
+                type="button"
+                onClick={() => setBlockTarget(null)}
+                className="btn btn-ghost h-10 px-4 text-xs"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                disabled={isPending}
+                onClick={confirmBlockAuthor}
+                className="btn btn-dark h-10 px-4 text-xs"
+              >
+                {isPending ? "Bloqueando..." : "Confirmar Bloqueio"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal de Denúncia */}
+      {reportModalOpen && reportTarget && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          className="fixed inset-0 z-50 flex items-center justify-center bg-noite/70 backdrop-blur-xs p-4"
+        >
+          <div className="card max-w-md w-full p-6 shadow-xl flex flex-col gap-4 fade-up">
+            <div className="flex items-center justify-between border-b border-line pb-3">
+              <div className="flex items-center gap-2 text-foreground">
+                <Flag size={18} className="text-accent-text" />
+                <h3 className="t-h3">Denunciar à Moderação</h3>
+              </div>
+              <button
+                type="button"
+                aria-label="Fechar denúncia"
                 onClick={() => setReportModalOpen(false)}
-                className="text-muted hover:text-grafite"
+                className="btn btn-ghost h-8 w-8 p-0"
               >
                 <X size={16} />
               </button>
@@ -470,16 +613,22 @@ export function CommunityFeed({
 
             {reportSuccess ? (
               <div className="py-8 flex flex-col items-center gap-2 text-center">
-                <CheckCircle2 size={36} className="text-profundo" />
-                <h4 className="font-semibold text-sm">Denúncia Recebida</h4>
+                <CheckCircle2 size={36} className="text-accent-text" />
+                <h4 className="font-semibold text-sm text-foreground">
+                  Denúncia Registrada
+                </h4>
                 <p className="text-xs text-muted">
-                  Nossa equipe de moderação avaliará a denúncia em conformidade com as diretrizes da comunidade SELYE.
+                  Nossa equipe revisará esta ocorrência conforme as diretrizes da comunidade.
                 </p>
               </div>
             ) : (
               <>
                 <p className="text-xs text-muted">
-                  Você está denunciando o conteúdo de <strong>{reportTarget.authorName}</strong>. Selecione o motivo:
+                  Selecione o motivo da denúncia para o conteúdo de{" "}
+                  <strong className="text-foreground">
+                    {reportTarget.authorName}
+                  </strong>
+                  :
                 </p>
 
                 <div className="flex flex-col gap-2">
@@ -492,7 +641,7 @@ export function CommunityFeed({
                   ].map((reason) => (
                     <label
                       key={reason}
-                      className="flex items-center gap-2 text-xs p-2 rounded border border-line/60 bg-osso/20 cursor-pointer hover:bg-osso/50"
+                      className="flex items-center gap-2.5 text-xs p-3 rounded-lg border border-line bg-foreground/[0.02] cursor-pointer hover:bg-foreground/[0.05]"
                     >
                       <input
                         type="radio"
@@ -507,15 +656,17 @@ export function CommunityFeed({
 
                 <div className="flex items-center justify-end gap-2 pt-3 border-t border-line">
                   <button
+                    type="button"
                     onClick={() => setReportModalOpen(false)}
-                    className="px-3 py-1.5 rounded text-xs text-muted hover:text-grafite"
+                    className="btn btn-ghost h-10 px-4 text-xs"
                   >
                     Cancelar
                   </button>
                   <button
+                    type="button"
                     onClick={handleSendReport}
                     disabled={isPending}
-                    className="px-4 py-2 rounded bg-amber-700 text-white font-semibold text-xs hover:bg-amber-800 cursor-pointer"
+                    className="btn btn-primary h-10 px-4 text-xs"
                   >
                     Confirmar Denúncia
                   </button>

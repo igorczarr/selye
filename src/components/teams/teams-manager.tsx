@@ -1,8 +1,19 @@
 "use client";
 
 import { useState, useTransition } from "react";
+import Link from "next/link";
 import { createTeam, joinTeamByCode, createTeamGroup } from "@/actions/teams";
-import { Users, Plus, Shield, MapPin, Key, Layers, FolderPlus } from "lucide-react";
+import {
+  Users,
+  Plus,
+  MapPin,
+  Key,
+  Layers,
+  FolderPlus,
+  X,
+  CheckCircle2,
+  AlertCircle,
+} from "lucide-react";
 
 interface TeamItem {
   id: string;
@@ -16,6 +27,21 @@ interface TeamItem {
   groups?: { id: string; name: string; description: string | null }[];
 }
 
+const PRIVACY_LABELS: Record<string, string> = {
+  public: "Pública",
+  private: "Restrita",
+  invite_only: "Somente convite",
+};
+
+function toSlug(value: string): string {
+  return value
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/(^-|-$)/g, "");
+}
+
 export function TeamsManager({ teams }: { teams: TeamItem[] }) {
   const [isPending, startTransition] = useTransition();
   const [isCreateOpen, setIsCreateOpen] = useState(false);
@@ -23,14 +49,20 @@ export function TeamsManager({ teams }: { teams: TeamItem[] }) {
   const [isGroupOpen, setIsGroupOpen] = useState(false);
   const [targetTeamId, setTargetTeamId] = useState<string | null>(null);
 
-  // Form states
+  // Estados de formulário
   const [teamName, setTeamName] = useState("");
   const [teamSlug, setTeamSlug] = useState("");
   const [teamDescription, setTeamDescription] = useState("");
   const [teamLocation, setTeamLocation] = useState("");
   const [inviteCode, setInviteCode] = useState("");
 
-  // Subgroup states
+  // Feedback sem alert() nativo
+  const [feedbackBanner, setFeedbackBanner] = useState<{
+    type: "success" | "error";
+    text: string;
+  } | null>(null);
+
+  // Estados de subgrupo
   const [groupName, setGroupName] = useState("");
   const [groupDescription, setGroupDescription] = useState("");
 
@@ -40,15 +72,20 @@ export function TeamsManager({ teams }: { teams: TeamItem[] }) {
 
     startTransition(async () => {
       await createTeam({
-        name: teamName,
-        slug: teamSlug,
-        description: teamDescription,
-        location: teamLocation,
+        name: teamName.trim(),
+        slug: teamSlug.trim(),
+        description: teamDescription.trim(),
+        location: teamLocation.trim(),
       });
       setIsCreateOpen(false);
       setTeamName("");
       setTeamSlug("");
       setTeamDescription("");
+      setTeamLocation("");
+      setFeedbackBanner({
+        type: "success",
+        text: "Equipe criada e registrada com sucesso.",
+      });
     });
   };
 
@@ -58,12 +95,18 @@ export function TeamsManager({ teams }: { teams: TeamItem[] }) {
 
     startTransition(async () => {
       try {
-        await joinTeamByCode(inviteCode);
-        alert("Você agora é membro da equipe!");
+        await joinTeamByCode(inviteCode.trim());
         setIsJoinOpen(false);
         setInviteCode("");
+        setFeedbackBanner({
+          type: "success",
+          text: "Filiação confirmada! Você agora faz parte da equipe.",
+        });
       } catch (err: any) {
-        alert(err.message || "Erro ao entrar na equipe.");
+        setFeedbackBanner({
+          type: "error",
+          text: err?.message || "Código de convite inválido ou expirado.",
+        });
       }
     });
   };
@@ -73,35 +116,51 @@ export function TeamsManager({ teams }: { teams: TeamItem[] }) {
     if (!targetTeamId || !groupName.trim()) return;
 
     startTransition(async () => {
-      await createTeamGroup(targetTeamId, groupName, groupDescription);
+      await createTeamGroup(
+        targetTeamId,
+        groupName.trim(),
+        groupDescription.trim()
+      );
       setIsGroupOpen(false);
       setGroupName("");
       setGroupDescription("");
       setTargetTeamId(null);
+      setFeedbackBanner({
+        type: "success",
+        text: "Subgrupo adicionado à estrutura da equipe.",
+      });
     });
   };
 
   return (
-    <div className="flex flex-col gap-6">
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+    <div className="flex flex-col gap-6 fade-up">
+      <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4">
         <div>
-          <span className="t-label">Estrutura Coletiva (§8)</span>
+          <span className="t-label">Organização Coletiva</span>
           <h1 className="t-h1 mt-1">Equipes e Assessorias</h1>
           <p className="text-muted text-sm mt-1">
-            Integre grupos de treinamento, receba programações de coaches e compartilhe sua evolução.
+            Integre grupos de treinamento, acompanhe subgrupos por modalidade e compartilhe sua evolução.
           </p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 shrink-0">
           <button
-            onClick={() => setIsJoinOpen(true)}
-            className="inline-flex items-center gap-1.5 h-10 px-4 rounded-md border border-line bg-surface text-xs font-semibold hover:bg-osso transition-colors cursor-pointer"
+            type="button"
+            onClick={() => {
+              setFeedbackBanner(null);
+              setIsJoinOpen(true);
+            }}
+            className="btn btn-ghost h-10 px-4 text-xs"
           >
             <Key size={14} />
             <span>Código de Convite</span>
           </button>
           <button
-            onClick={() => setIsCreateOpen(true)}
-            className="inline-flex items-center gap-1.5 h-10 px-4 rounded-md bg-grafite text-osso text-xs font-semibold hover:bg-noite transition-colors shadow-xs cursor-pointer"
+            type="button"
+            onClick={() => {
+              setFeedbackBanner(null);
+              setIsCreateOpen(true);
+            }}
+            className="btn btn-primary h-10 px-4 text-xs"
           >
             <Plus size={15} />
             <span>Criar Equipe</span>
@@ -109,58 +168,94 @@ export function TeamsManager({ teams }: { teams: TeamItem[] }) {
         </div>
       </div>
 
-      {/* Grid de Equipes */}
+      {feedbackBanner && (
+        <div
+          role="status"
+          className={`rounded-xl border px-4 py-3 flex items-center justify-between gap-3 text-xs ${
+            feedbackBanner.type === "success"
+              ? "border-profundo bg-lima/20 text-foreground"
+              : "border-mineral bg-foreground/5 text-foreground"
+          }`}
+        >
+          <div className="flex items-center gap-2.5">
+            {feedbackBanner.type === "success" ? (
+              <CheckCircle2 size={16} className="text-accent-text shrink-0" />
+            ) : (
+              <AlertCircle size={16} className="text-accent-text shrink-0" />
+            )}
+            <span className="font-medium">{feedbackBanner.text}</span>
+          </div>
+          <button
+            type="button"
+            aria-label="Fechar aviso"
+            onClick={() => setFeedbackBanner(null)}
+            className="text-muted hover:text-foreground cursor-pointer"
+          >
+            <X size={14} />
+          </button>
+        </div>
+      )}
+
+      {/* Grade de Equipes */}
       {teams.length === 0 ? (
-        <div className="rounded-lg border border-line bg-surface p-12 text-center flex flex-col items-center gap-3">
-          <Users size={36} className="text-muted" strokeWidth={1.5} />
-          <h3 className="t-h2">Nenhuma equipe cadastrada ainda</h3>
+        <div className="card p-12 text-center flex flex-col items-center gap-3">
+          <div className="w-12 h-12 rounded-full bg-foreground/5 flex items-center justify-center text-muted">
+            <Users size={24} strokeWidth={1.75} />
+          </div>
+          <h2 className="t-h2 mt-1">Nenhuma equipe cadastrada ainda</h2>
           <p className="text-muted text-sm max-w-sm">
-            Crie sua equipe, assessoria esportiva ou academia para gerenciar atletas e programações coletivas.
+            Crie sua equipe, assessoria esportiva ou clube de treinamento para reunir atletas e subgrupos.
           </p>
           <button
+            type="button"
             onClick={() => setIsCreateOpen(true)}
-            className="mt-2 inline-flex items-center gap-2 h-10 px-4 rounded-md bg-lima text-grafite font-bold text-sm cursor-pointer"
+            className="btn btn-primary mt-2"
           >
-            Cadastrar Primeira Equipe
+            <Plus size={16} />
+            <span>Cadastrar Primeira Equipe</span>
           </button>
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           {teams.map((t) => (
-            <div
+            <article
               key={t.id}
-              className="rounded-lg border border-line bg-surface p-5 flex flex-col justify-between hover:border-profundo/50 transition-all shadow-xs"
+              className="card card-interactive p-6 flex flex-col justify-between"
             >
               <div>
-                <div className="flex items-center justify-between">
-                  <span className="t-label !text-profundo">Privacidade: {t.privacy}</span>
-                  <span className="t-data text-xs text-muted flex items-center gap-1">
-                    <Users size={12} />
+                <div className="flex items-center justify-between gap-2">
+                  <span className="chip">
+                    {PRIVACY_LABELS[t.privacy] || t.privacy}
+                  </span>
+                  <span className="t-data text-xs text-muted flex items-center gap-1.5">
+                    <Users size={13} />
                     <span>{t.membersCount} atletas</span>
                   </span>
                 </div>
 
-                <h3 className="t-h2 mt-2">{t.name}</h3>
+                <h2 className="t-h2 mt-3">{t.name}</h2>
                 {t.description && (
-                  <p className="text-muted text-xs mt-1 leading-relaxed">{t.description}</p>
+                  <p className="text-muted text-xs mt-1 leading-relaxed">
+                    {t.description}
+                  </p>
                 )}
 
-                <div className="mt-4 flex items-center gap-4 text-xs text-muted font-mono">
+                <div className="mt-4 flex flex-wrap items-center gap-4 text-xs text-muted font-mono">
                   {t.location && (
                     <span className="flex items-center gap-1">
                       <MapPin size={12} />
                       <span>{t.location}</span>
                     </span>
                   )}
-                  <span>Responsável: {t.ownerName}</span>
+                  <span>Coordenação: {t.ownerName}</span>
                 </div>
 
-                {/* Subgrupos da Equipe (§8.2) */}
-                <div className="mt-4 pt-3 border-t border-line/60">
+                {/* Subgrupos */}
+                <div className="mt-4 pt-3 border-t border-line">
                   <div className="flex items-center justify-between mb-2">
-                    <span className="t-aux text-muted flex items-center gap-1">
-                      <Layers size={11} />
-                      <span>Subgrupos & Frentes</span>
+                    <span className="t-aux text-muted flex items-center gap-1.5">
+                      <Layers size={12} />
+                      <span>Subgrupos & Pelotões</span>
                     </span>
                     <button
                       type="button"
@@ -168,160 +263,203 @@ export function TeamsManager({ teams }: { teams: TeamItem[] }) {
                         setTargetTeamId(t.id);
                         setIsGroupOpen(true);
                       }}
-                      className="text-[11px] text-profundo hover:underline flex items-center gap-1 cursor-pointer font-semibold"
+                      className="text-xs text-accent-text hover:underline flex items-center gap-1 cursor-pointer font-semibold"
                     >
-                      <FolderPlus size={11} />
-                      <span>Criar Subgrupo</span>
+                      <FolderPlus size={12} />
+                      <span>Novo Subgrupo</span>
                     </button>
                   </div>
 
                   {t.groups && t.groups.length > 0 ? (
                     <div className="flex flex-wrap gap-1.5">
                       {t.groups.map((g) => (
-                        <span
-                          key={g.id}
-                          className="px-2 py-0.5 rounded text-[10px] font-mono bg-osso text-grafite border border-line"
-                        >
+                        <span key={g.id} className="chip">
                           {g.name}
                         </span>
                       ))}
                     </div>
                   ) : (
-                    <p className="text-[11px] text-muted italic">Nenhum subgrupo criado ainda.</p>
+                    <p className="text-xs text-muted">
+                      Nenhum subgrupo configurado.
+                    </p>
                   )}
                 </div>
               </div>
 
               <div className="mt-5 pt-3 border-t border-line flex items-center justify-between text-xs">
-                <span className="text-profundo font-semibold font-mono">/@{t.slug}</span>
-                <span className="px-3 py-1 rounded bg-osso text-grafite font-semibold">
+                <span className="t-data text-accent-text">/@{t.slug}</span>
+                <Link
+                  href="/comunidade?tab=teams"
+                  className="btn btn-ghost h-8 px-3 text-xs"
+                >
                   Mural da Equipe →
-                </span>
+                </Link>
               </div>
-            </div>
+            </article>
           ))}
         </div>
       )}
 
       {/* Modal Criar Subgrupo */}
       {isGroupOpen && (
-        <div className="fixed inset-0 bg-noite/60 backdrop-blur-xs flex items-center justify-center p-4 z-50">
+        <div
+          role="dialog"
+          aria-modal="true"
+          className="fixed inset-0 bg-noite/70 backdrop-blur-xs flex items-center justify-center p-4 z-50"
+        >
           <form
             onSubmit={handleCreateGroup}
-            className="bg-surface rounded-lg border border-line max-w-sm w-full p-6 flex flex-col gap-4 shadow-xl"
+            className="card max-w-md w-full p-6 flex flex-col gap-4 shadow-xl fade-up"
           >
             <div className="flex justify-between items-start">
               <div>
-                <span className="t-label">Subdivisão Esportiva (§8.2)</span>
+                <span className="t-label">Frente Esportiva</span>
                 <h3 className="t-h2 mt-1">Criar Subgrupo</h3>
               </div>
               <button
                 type="button"
+                aria-label="Fechar modal"
                 onClick={() => setIsGroupOpen(false)}
-                className="text-muted hover:text-grafite font-bold p-1 cursor-pointer"
+                className="btn btn-ghost h-8 w-8 p-0"
               >
-                ✕
+                <X size={16} />
               </button>
             </div>
 
             <div className="flex flex-col gap-1.5">
-              <label className="t-aux text-grafite font-semibold">Nome do Subgrupo</label>
+              <label htmlFor="subgroup-name" className="t-aux text-foreground font-semibold">
+                Nome do Subgrupo
+              </label>
               <input
+                id="subgroup-name"
                 type="text"
                 required
                 value={groupName}
                 onChange={(e) => setGroupName(e.target.value)}
-                placeholder="Ex: Corrida - Longão de Sábado, LPO Avançado..."
-                className="h-10 px-3 rounded-md border border-line bg-background text-xs"
+                placeholder="Ex: Pelotão 10K, Força & LPO..."
+                className="input h-10 text-xs"
               />
             </div>
 
             <div className="flex flex-col gap-1.5">
-              <label className="t-aux text-grafite font-semibold">Descrição (Opcional)</label>
+              <label htmlFor="subgroup-desc" className="t-aux text-foreground font-semibold">
+                Descrição (Opcional)
+              </label>
               <textarea
+                id="subgroup-desc"
                 rows={2}
                 value={groupDescription}
                 onChange={(e) => setGroupDescription(e.target.value)}
-                placeholder="Ex: Grupo focado em rodagens acima de 15km aos finais de semana..."
-                className="p-3 rounded-md border border-line bg-background text-xs"
+                placeholder="Objetivos e dias de encontro deste subgrupo..."
+                className="input h-auto py-2.5 text-xs"
               />
             </div>
 
-            <button
-              type="submit"
-              disabled={isPending || !groupName.trim()}
-              className="mt-2 h-10 rounded-md bg-grafite text-osso font-semibold text-xs hover:bg-noite transition-colors shadow-xs cursor-pointer"
-            >
-              {isPending ? "Criando..." : "Confirmar Subgrupo"}
-            </button>
+            <div className="flex justify-end gap-2 pt-2">
+              <button
+                type="button"
+                onClick={() => setIsGroupOpen(false)}
+                className="btn btn-ghost h-10 px-4 text-xs"
+              >
+                Cancelar
+              </button>
+              <button
+                type="submit"
+                disabled={isPending || !groupName.trim()}
+                className="btn btn-primary h-10 px-4 text-xs"
+              >
+                {isPending ? "Criando..." : "Confirmar Subgrupo"}
+              </button>
+            </div>
           </form>
         </div>
       )}
 
       {/* Modal Criar Equipe */}
       {isCreateOpen && (
-        <div className="fixed inset-0 bg-noite/60 backdrop-blur-xs flex items-center justify-center p-4 z-50">
+        <div
+          role="dialog"
+          aria-modal="true"
+          className="fixed inset-0 bg-noite/70 backdrop-blur-xs flex items-center justify-center p-4 z-50"
+        >
           <form
             onSubmit={handleCreate}
-            className="bg-surface rounded-lg border border-line max-w-md w-full p-6 flex flex-col gap-4 shadow-xl"
+            className="card max-w-md w-full p-6 flex flex-col gap-4 shadow-xl fade-up"
           >
             <div className="flex justify-between items-start">
               <div>
-                <span className="t-label">Nova Organização Esportiva</span>
+                <span className="t-label">Nova Organização</span>
                 <h3 className="t-h2 mt-1">Cadastrar Equipe</h3>
               </div>
               <button
                 type="button"
+                aria-label="Fechar modal"
                 onClick={() => setIsCreateOpen(false)}
-                className="text-muted hover:text-grafite font-bold p-1 cursor-pointer"
+                className="btn btn-ghost h-8 w-8 p-0"
               >
-                ✕
+                <X size={16} />
               </button>
             </div>
 
             <div className="flex flex-col gap-1.5">
-              <label className="t-aux text-grafite font-semibold">Nome da Equipe</label>
+              <label htmlFor="team-name" className="t-aux text-foreground font-semibold">
+                Nome da Equipe
+              </label>
               <input
+                id="team-name"
                 type="text"
                 required
                 value={teamName}
-                onChange={(e) => setTeamName(e.target.value)}
+                onChange={(e) => {
+                  const val = e.target.value;
+                  setTeamName(val);
+                  setTeamSlug(toSlug(val));
+                }}
                 placeholder="Ex: Selye Performance Club"
-                className="h-10 px-3 rounded-md border border-line bg-background text-sm"
+                className="input h-10 text-sm"
               />
             </div>
 
             <div className="flex flex-col gap-1.5">
-              <label className="t-aux text-grafite font-semibold">Slug Identificador</label>
+              <label htmlFor="team-slug" className="t-aux text-foreground font-semibold">
+                Identificador (@slug)
+              </label>
               <input
+                id="team-slug"
                 type="text"
                 required
                 value={teamSlug}
-                onChange={(e) => setTeamSlug(e.target.value)}
+                onChange={(e) => setTeamSlug(toSlug(e.target.value))}
                 placeholder="ex: selye-performance"
-                className="h-10 px-3 rounded-md border border-line bg-background text-sm font-mono"
+                className="input h-10 text-sm font-mono"
               />
             </div>
 
             <div className="flex flex-col gap-1.5">
-              <label className="t-aux text-grafite font-semibold">Localização (Opcional)</label>
+              <label htmlFor="team-location" className="t-aux text-foreground font-semibold">
+                Cidade / Estado (Opcional)
+              </label>
               <input
+                id="team-location"
                 type="text"
                 value={teamLocation}
                 onChange={(e) => setTeamLocation(e.target.value)}
                 placeholder="Ex: São Paulo, SP"
-                className="h-10 px-3 rounded-md border border-line bg-background text-sm"
+                className="input h-10 text-sm"
               />
             </div>
 
             <div className="flex flex-col gap-1.5">
-              <label className="t-aux text-grafite font-semibold">Descrição</label>
+              <label htmlFor="team-desc" className="t-aux text-foreground font-semibold">
+                Descrição
+              </label>
               <textarea
+                id="team-desc"
                 rows={2}
                 value={teamDescription}
                 onChange={(e) => setTeamDescription(e.target.value)}
-                placeholder="Descrição dos objetivos, modalidades e metodologia..."
-                className="p-3 rounded-md border border-line bg-background text-sm"
+                placeholder="Metodologia, modalidades e proposta da equipe..."
+                className="input h-auto py-2.5 text-sm"
               />
             </div>
 
@@ -329,14 +467,14 @@ export function TeamsManager({ teams }: { teams: TeamItem[] }) {
               <button
                 type="button"
                 onClick={() => setIsCreateOpen(false)}
-                className="h-10 px-4 rounded border border-line text-sm cursor-pointer"
+                className="btn btn-ghost h-10 px-4 text-xs"
               >
                 Cancelar
               </button>
               <button
                 type="submit"
                 disabled={isPending}
-                className="h-10 px-5 rounded bg-grafite text-osso font-semibold text-sm hover:bg-noite cursor-pointer"
+                className="btn btn-primary h-10 px-5 text-xs"
               >
                 {isPending ? "Cadastrando..." : "Cadastrar Equipe"}
               </button>
@@ -347,34 +485,42 @@ export function TeamsManager({ teams }: { teams: TeamItem[] }) {
 
       {/* Modal Ingressar por Código */}
       {isJoinOpen && (
-        <div className="fixed inset-0 bg-noite/60 backdrop-blur-xs flex items-center justify-center p-4 z-50">
+        <div
+          role="dialog"
+          aria-modal="true"
+          className="fixed inset-0 bg-noite/70 backdrop-blur-xs flex items-center justify-center p-4 z-50"
+        >
           <form
             onSubmit={handleJoin}
-            className="bg-surface rounded-lg border border-line max-w-sm w-full p-6 flex flex-col gap-4 shadow-xl"
+            className="card max-w-sm w-full p-6 flex flex-col gap-4 shadow-xl fade-up"
           >
             <div className="flex justify-between items-start">
               <div>
                 <span className="t-label">Filiação Rápida</span>
-                <h3 className="t-h2 mt-1">Entrar em Equipe</h3>
+                <h3 className="t-h2 mt-1">Entrar com Código</h3>
               </div>
               <button
                 type="button"
+                aria-label="Fechar modal"
                 onClick={() => setIsJoinOpen(false)}
-                className="text-muted hover:text-grafite font-bold p-1 cursor-pointer"
+                className="btn btn-ghost h-8 w-8 p-0"
               >
-                ✕
+                <X size={16} />
               </button>
             </div>
 
             <div className="flex flex-col gap-1.5">
-              <label className="t-aux text-grafite font-semibold">Código de Convite</label>
+              <label htmlFor="invite-code" className="t-aux text-foreground font-semibold">
+                Código de Convite Fornecido pelo Treinador
+              </label>
               <input
+                id="invite-code"
                 type="text"
                 required
                 value={inviteCode}
                 onChange={(e) => setInviteCode(e.target.value)}
-                placeholder="Ex: SELYE-XXXXXX"
-                className="h-11 px-3 text-center uppercase tracking-widest rounded-md border border-line bg-background text-base font-mono"
+                placeholder="SELYE-XXXXXX"
+                className="input h-11 text-center uppercase tracking-widest text-base font-mono"
               />
             </div>
 
@@ -382,14 +528,14 @@ export function TeamsManager({ teams }: { teams: TeamItem[] }) {
               <button
                 type="button"
                 onClick={() => setIsJoinOpen(false)}
-                className="h-10 px-4 rounded border border-line text-sm cursor-pointer"
+                className="btn btn-ghost h-10 px-4 text-xs"
               >
                 Cancelar
               </button>
               <button
                 type="submit"
                 disabled={isPending}
-                className="h-10 px-5 rounded bg-grafite text-osso font-semibold text-sm hover:bg-noite cursor-pointer"
+                className="btn btn-primary h-10 px-5 text-xs"
               >
                 {isPending ? "Validando..." : "Ingressar"}
               </button>
