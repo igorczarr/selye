@@ -3,19 +3,15 @@
 import { useState } from "react";
 import Link from "next/link";
 import {
-  Activity,
-  Zap,
   ShieldCheck,
   AlertTriangle,
   HelpCircle,
-  TrendingUp,
-  RotateCcw,
-  Layers,
   ChevronDown,
   ChevronUp,
   Cpu,
   Printer,
   Smartphone,
+  Activity,
 } from "lucide-react";
 import { type ACWRResult } from "@/core/performance/training-load";
 import { type PerformanceRecommendation } from "@/core/performance/recommendations-engine";
@@ -32,289 +28,373 @@ interface PerformanceDashboardProps {
 }
 
 export function PerformanceDashboard({ data }: PerformanceDashboardProps) {
-  const { acwrResult, recommendations, last7DaysChart, consecutiveDays, averageRpe } = data;
-  const [expandedRationale, setExpandedRationale] = useState<Record<string, boolean>>({});
+  const {
+    acwrResult,
+    recommendations,
+    last7DaysChart,
+    consecutiveDays,
+    averageRpe,
+  } = data;
+  const [expandedRationale, setExpandedRationale] = useState<
+    Record<string, boolean>
+  >({});
 
   const toggleRationale = (id: string) => {
     setExpandedRationale((prev) => ({ ...prev, [id]: !prev[id] }));
   };
 
-  // Cores de status de ACWR
-  const getStatusColor = (status: string) => {
+  // Estilos semânticos dentro da paleta Selye (compatíveis com tema claro e escuro)
+  const getStatusStyle = (status: string) => {
     switch (status) {
       case "sweet_spot":
         return {
-          bg: "bg-profundo/10",
-          border: "border-profundo/40",
-          text: "text-profundo",
+          border: "border-profundo/50",
+          bg: "bg-lima/10",
           badge: "bg-lima text-grafite",
+          indicator: "Zona Ótima",
         };
       case "under_training":
         return {
-          bg: "bg-blue-50/50",
-          border: "border-blue-200",
-          text: "text-blue-700",
-          badge: "bg-blue-100 text-blue-800",
+          border: "border-line",
+          bg: "bg-surface",
+          badge: "bg-foreground/10 text-foreground",
+          indicator: "Estímulo Baixo",
         };
       case "elevated_risk":
         return {
-          bg: "bg-amber-50/50",
-          border: "border-amber-300",
-          text: "text-amber-800",
-          badge: "bg-amber-100 text-amber-900",
+          border: "border-mineral",
+          bg: "bg-mineral/10",
+          badge: "bg-profundo text-osso",
+          indicator: "Atenção à Carga",
         };
       case "danger_zone":
         return {
-          bg: "bg-red-50/50",
-          border: "border-red-300",
-          text: "text-red-700",
-          badge: "bg-red-100 text-red-800",
+          border: "border-foreground",
+          bg: "bg-noite text-osso",
+          badge: "bg-lima text-grafite",
+          indicator: "Sobrecarga Aguda",
         };
       default:
         return {
-          bg: "bg-surface",
           border: "border-line",
-          text: "text-grafite",
-          badge: "bg-osso text-grafite",
+          bg: "bg-surface",
+          badge: "bg-foreground/10 text-foreground",
+          indicator: "Em calibração",
         };
     }
   };
 
-  const statusStyle = getStatusColor(acwrResult.status);
+  const statusStyle = getStatusStyle(acwrResult.status);
+  const isInvertedCard = acwrResult.status === "danger_zone";
   const maxDailyLoad = Math.max(1, ...last7DaysChart.map((d) => d.load));
+  const markerPositionPercent = Math.min(
+    98,
+    Math.max(2, (acwrResult.acwr / 2.0) * 100)
+  );
 
   return (
-    <div className="flex flex-col gap-6 max-w-5xl mx-auto w-full">
-      {/* Top Banner */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+    <div className="flex flex-col gap-6 max-w-5xl mx-auto w-full fade-up">
+      {/* Cabeçalho da Página */}
+      <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4">
         <div>
-          <span className="t-label">Gestão de Carga & Fisiologia (§17 e §21)</span>
-          <h1 className="t-h1 mt-1">Performance & Carga de Treinamento</h1>
-          <p className="text-muted text-xs mt-1">
-            Acompanhamento da Razão de Carga Aguda:Crônica (ACWR), estresse adaptativo e recomendações explicáveis.
+          <span className="t-label">Fisiologia do Exercício</span>
+          <h1 className="t-h1 mt-1">Performance & Carga Adaptativa</h1>
+          <p className="text-muted text-sm mt-1">
+            Monitoramento da razão de carga aguda:crônica (ACWR), monotonia semanal e orientações baseadas em evidências.
           </p>
         </div>
 
-        <div className="flex flex-wrap gap-2">
-          <Link
-            href="/integracoes"
-            className="inline-flex items-center gap-1.5 h-9 px-3.5 rounded-md border border-line bg-surface text-grafite text-xs font-semibold hover:bg-osso transition-colors shadow-xs"
-          >
+        <div className="flex flex-wrap gap-2 shrink-0">
+          <Link href="/integracoes" className="btn btn-ghost h-10 px-3.5 text-xs">
             <Smartphone size={14} />
-            <span>Dispositivos & Wearables</span>
+            <span>Dispositivos</span>
           </Link>
-          <Link
-            href="/treinos"
-            className="inline-flex items-center gap-1.5 h-9 px-3.5 rounded-md bg-grafite text-osso text-xs font-semibold hover:bg-noite transition-colors shadow-xs"
-          >
+          <Link href="/treinos" className="btn btn-dark h-10 px-3.5 text-xs">
             <Printer size={14} />
-            <span>Fichas Imprimíveis</span>
+            <span>Fichas Técnicas</span>
           </Link>
         </div>
       </div>
 
-      {/* Card Principal: ACWR (Razão Aguda:Crônica) */}
-      <div className={`rounded-lg border ${statusStyle.border} ${statusStyle.bg} p-6 shadow-xs flex flex-col gap-5`}>
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+      {/* Painel Principal: ACWR (Gabbett Ratio) */}
+      <section
+        className={`rounded-2xl border ${statusStyle.border} ${statusStyle.bg} p-6 sm:p-8 flex flex-col gap-6 transition-colors`}
+      >
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
           <div>
-            <div className="flex items-center gap-2">
-              <span className="t-label !text-profundo">ACWR (Gabbett Ratio)</span>
-              <span className={`px-2 py-0.5 rounded text-[10px] font-mono font-bold ${statusStyle.badge}`}>
+            <div className="flex items-center gap-2.5">
+              <span
+                className={`t-label ${
+                  isInvertedCard ? "!text-nevoa" : "!text-accent-text"
+                }`}
+              >
+                Razão Aguda : Crônica (ACWR)
+              </span>
+              <span
+                className={`px-2.5 py-0.5 rounded-full text-xs font-mono font-semibold ${statusStyle.badge}`}
+              >
                 {acwrResult.statusLabel}
               </span>
             </div>
-            <div className="flex items-baseline gap-3 mt-1">
-              <span className="t-data text-4xl font-bold tracking-tight text-grafite">
+
+            <div className="flex items-baseline gap-3 mt-2">
+              <span
+                className={`t-data text-4xl sm:text-5xl font-semibold tracking-tight ${
+                  isInvertedCard ? "text-osso" : "text-foreground"
+                }`}
+              >
                 {acwrResult.acwr.toFixed(2)}
               </span>
-              <span className="text-xs text-muted font-mono">
-                Faixa Ótima: {acwrResult.sweetSpotMin} a {acwrResult.sweetSpotMax}
+              <span
+                className={`text-xs font-mono ${
+                  isInvertedCard ? "text-nevoa" : "text-muted"
+                }`}
+              >
+                Faixa ideal: {acwrResult.sweetSpotMin} – {acwrResult.sweetSpotMax}
               </span>
             </div>
           </div>
 
-          <div className="flex gap-4">
-            <div className="p-3 rounded-md bg-surface border border-line/60 text-center min-w-[100px]">
-              <span className="t-label !text-[9px]">Carga Aguda (7d)</span>
-              <p className="t-data text-base font-bold text-grafite">{acwrResult.acuteLoad} UA</p>
+          <div className="grid grid-cols-2 gap-3 sm:min-w-[260px]">
+            <div className="p-3.5 rounded-xl bg-surface text-foreground border border-line">
+              <span className="t-label block">Carga Aguda (7d)</span>
+              <p className="t-data text-lg font-semibold mt-1">
+                {acwrResult.acuteLoad}{" "}
+                <span className="text-xs font-normal text-muted">UA</span>
+              </p>
             </div>
-            <div className="p-3 rounded-md bg-surface border border-line/60 text-center min-w-[100px]">
-              <span className="t-label !text-[9px]">Carga Crônica (28d)</span>
-              <p className="t-data text-base font-bold text-grafite">{acwrResult.chronicLoad} UA</p>
+            <div className="p-3.5 rounded-xl bg-surface text-foreground border border-line">
+              <span className="t-label block">Carga Crônica (28d)</span>
+              <p className="t-data text-lg font-semibold mt-1">
+                {acwrResult.chronicLoad}{" "}
+                <span className="text-xs font-normal text-muted">UA</span>
+              </p>
             </div>
           </div>
         </div>
 
-        {/* Visual Bar do Sweet Spot */}
-        <div className="flex flex-col gap-1.5 pt-2">
-          <div className="flex justify-between text-[10px] font-mono text-muted">
-            <span>Sub-treinamento (&lt; 0.8)</span>
-            <span className="text-profundo font-semibold">Sweet Spot (0.8 - 1.3)</span>
-            <span className="text-amber-700">Aceleração (1.3 - 1.5)</span>
-            <span className="text-red-700">Pico Crítico (&gt; 1.5)</span>
+        {/* Régua de Zonas Fisiológicas */}
+        <div className="flex flex-col gap-2 pt-2">
+          <div
+            className={`grid grid-cols-4 text-xs font-mono ${
+              isInvertedCard ? "text-nevoa" : "text-muted"
+            }`}
+          >
+            <span>Base (&lt; 0.8)</span>
+            <span
+              className={`font-semibold ${
+                isInvertedCard ? "text-lima" : "text-accent-text"
+              }`}
+            >
+              Zona Ótima (0.8–1.3)
+            </span>
+            <span className="text-right sm:text-left">Transição (1.3–1.5)</span>
+            <span className="text-right">Sobrecarga (&gt; 1.5)</span>
           </div>
 
-          {/* Barra segmentada */}
-          <div className="w-full h-3 rounded-full bg-line overflow-hidden flex relative">
-            <div className="w-[30%] bg-blue-200" title="Sub-treinamento" />
-            <div className="w-[35%] bg-lima" title="Zona Ótima (Sweet Spot)" />
-            <div className="w-[15%] bg-amber-300" title="Risco Elevado" />
-            <div className="w-[20%] bg-red-400" title="Zona de Risco de Sobrecarga" />
+          <div className="w-full h-3 rounded-full bg-foreground/10 overflow-hidden flex relative">
+            <div className="w-[40%] bg-mineral/35" title="Sub-treinamento (< 0.8)" />
+            <div className="w-[25%] bg-lima" title="Zona Ótima (0.8 a 1.3)" />
+            <div className="w-[10%] bg-profundo/70" title="Transição / Atenção (1.3 a 1.5)" />
+            <div className="w-[25%] bg-grafite" title="Sobrecarga (> 1.5)" />
 
-            {/* Marcador da Razão Atual */}
             <div
-              className="absolute top-0 bottom-0 w-1.5 bg-grafite border-x border-white shadow"
-              style={{
-                left: `${Math.min(98, Math.max(2, (acwrResult.acwr / 2.0) * 100))}%`,
-              }}
+              aria-label={`Marcador atual de ACWR em ${acwrResult.acwr.toFixed(2)}`}
+              className="absolute -top-1 -bottom-1 w-2 rounded-full bg-foreground ring-2 ring-surface transition-all"
+              style={{ left: `${markerPositionPercent}%` }}
             />
           </div>
         </div>
-      </div>
+      </section>
 
-      {/* Indicadores Fisiológicos Complementares: Monotonia, Strain, Dias Consecutivos */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        <div className="rounded-lg border border-line bg-surface p-5 flex flex-col justify-between shadow-xs">
+      {/* Indicadores Fisiológicos Complementares */}
+      <section className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        <div className="card p-5 flex flex-col justify-between">
           <div>
-            <span className="t-label">Monotonia da Carga</span>
-            <h4 className="t-data text-2xl font-bold mt-1">{acwrResult.monotony}</h4>
+            <span className="t-label">Monotonia (7d)</span>
+            <p className="t-data text-2xl font-semibold mt-1 text-foreground">
+              {acwrResult.monotony}
+            </p>
           </div>
-          <p className="text-[11px] text-muted mt-2">
-            Relação média/desvio nos 7 dias. Valores &gt; 2.0 indicam ausência de variação e risco de estagnação.
+          <p className="t-aux text-muted mt-3">
+            Relação média/desvio. Acima de 2,0 sugere pouca variação de estímulo.
           </p>
         </div>
 
-        <div className="rounded-lg border border-line bg-surface p-5 flex flex-col justify-between shadow-xs">
+        <div className="card p-5 flex flex-col justify-between">
           <div>
             <span className="t-label">Tensão Semanal (Strain)</span>
-            <h4 className="t-data text-2xl font-bold mt-1 text-profundo">
+            <p className="t-data text-2xl font-semibold mt-1 text-accent-text">
               {acwrResult.strain.toLocaleString("pt-BR")}
-            </h4>
+            </p>
           </div>
-          <p className="text-[11px] text-muted mt-2">
-            Índice de estresse biológico ponderado (Carga Semanal × Monotonia).
+          <p className="t-aux text-muted mt-3">
+            Estresse fisiológico ponderado (Carga Semanal × Monotonia).
           </p>
         </div>
 
-        <div className="rounded-lg border border-line bg-surface p-5 flex flex-col justify-between shadow-xs">
+        <div className="card p-5 flex flex-col justify-between">
           <div>
             <span className="t-label">Dias Consecutivos</span>
-            <h4 className="t-data text-2xl font-bold mt-1">{consecutiveDays} dias</h4>
+            <p className="t-data text-2xl font-semibold mt-1 text-foreground">
+              {consecutiveDays} {consecutiveDays === 1 ? "dia" : "dias"}
+            </p>
           </div>
-          <p className="text-[11px] text-muted mt-2">
-            Sessões registradas sem descanso ativo nos últimos dias.
+          <p className="t-aux text-muted mt-3">
+            Sequência atual de treinos sem dia de recuperação intercalado.
           </p>
         </div>
 
-        <div className="rounded-lg border border-line bg-surface p-5 flex flex-col justify-between shadow-xs">
+        <div className="card p-5 flex flex-col justify-between">
           <div>
-            <span className="t-label">RPE Médio da Semana</span>
-            <h4 className="t-data text-2xl font-bold mt-1">RPE {averageRpe}</h4>
+            <span className="t-label">Esforço Médio (7d)</span>
+            <p className="t-data text-2xl font-semibold mt-1 text-foreground">
+              RPE {averageRpe}
+            </p>
           </div>
-          <p className="text-[11px] text-muted mt-2">
-            Percepção subjetiva média de esforço na escala Foster (1 a 10).
+          <p className="t-aux text-muted mt-3">
+            Percepção subjetiva média na escala de Foster (1 a 10).
           </p>
         </div>
-      </div>
+      </section>
 
-      {/* Gráfico Diário de Carga (Últimos 7 dias) */}
-      <div className="rounded-lg border border-line bg-surface p-6 shadow-xs flex flex-col gap-4">
-        <div className="flex items-center justify-between">
+      {/* Distribuição de Carga nos Últimos 7 Dias */}
+      <section className="card p-6 flex flex-col gap-5">
+        <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-2">
           <div>
             <span className="t-label">Distribuição Temporal</span>
-            <h3 className="t-h2 mt-1">Carga Diária nos Últimos 7 Dias</h3>
+            <h2 className="t-h2 mt-1">Carga Diária (Últimos 7 Dias)</h2>
           </div>
-          <span className="t-data text-xs text-muted font-mono">
-            Total Semanal: {acwrResult.weeklyLoadTotal} UA
+          <span className="t-data text-xs text-muted">
+            Acumulado: {acwrResult.weeklyLoadTotal} UA
           </span>
         </div>
 
-        <div className="grid grid-cols-7 gap-2 items-end h-40 pt-6">
-          {last7DaysChart.map((d) => {
-            const heightPercent = Math.max(8, (d.load / maxDailyLoad) * 100);
+        <div className="grid grid-cols-7 gap-2 sm:gap-4 items-end h-44 pt-6 border-b border-line pb-3">
+          {last7DaysChart.map((d, idx) => {
+            const isToday = idx === last7DaysChart.length - 1;
+            const hasLoad = d.load > 0;
+            const heightPercent = hasLoad
+              ? Math.max(14, Math.round((d.load / maxDailyLoad) * 100))
+              : 6;
+
             return (
-              <div key={d.date} className="flex flex-col items-center gap-2 h-full justify-end">
-                <span className="t-data text-[10px] text-muted font-mono">{d.load}</span>
-                <div
-                  className="w-full max-w-[42px] rounded-t-md bg-profundo/80 hover:bg-profundo transition-all"
-                  style={{ height: `${heightPercent}%` }}
-                />
-                <span className="text-[11px] font-semibold text-grafite">{d.dayName}</span>
+              <div
+                key={d.date}
+                className="flex flex-col items-center gap-2 h-full justify-end"
+              >
+                <span className="t-data text-xs text-muted">
+                  {hasLoad ? d.load : "—"}
+                </span>
+                <div className="w-full max-w-[44px] h-full flex items-end">
+                  <div
+                    title={`${d.dayName} (${d.date}): ${d.load} UA`}
+                    className={`w-full rounded-t-lg transition-all ${
+                      hasLoad
+                        ? isToday
+                          ? "bg-lima"
+                          : "bg-profundo hover:bg-mineral"
+                        : "bg-foreground/10"
+                    }`}
+                    style={{ height: `${heightPercent}%` }}
+                  />
+                </div>
+                <span
+                  className={`text-xs font-mono ${
+                    isToday
+                      ? "font-semibold text-foreground"
+                      : "text-muted"
+                  }`}
+                >
+                  {d.dayName}
+                </span>
               </div>
             );
           })}
         </div>
-      </div>
+      </section>
 
-      {/* Recomendações Explicáveis & Transparentes (XAI - §21) */}
-      <div className="rounded-lg border border-line bg-surface p-6 shadow-xs flex flex-col gap-4">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <Cpu size={18} className="text-profundo" />
+      {/* Recomendações Baseadas em Evidências */}
+      <section className="card p-6 flex flex-col gap-4">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+          <div className="flex items-center gap-3">
+            <div className="w-9 h-9 rounded-lg bg-lima/25 text-foreground flex items-center justify-center shrink-0">
+              <Cpu size={18} />
+            </div>
             <div>
-              <span className="t-label">Transparência Algorítmica (§21)</span>
-              <h3 className="t-h2 mt-0.5">Recomendações Baseadas em Evidências</h3>
+              <span className="t-label">Orientação Explicável</span>
+              <h2 className="t-h2 mt-0.5">Recomendações de Ajuste</h2>
             </div>
           </div>
-          <span className="t-aux text-muted">Sem diagnósticos médicos</span>
+          <span className="chip">Caráter informativo · Não substitui avaliação clínica</span>
         </div>
 
         <div className="flex flex-col gap-3">
           {recommendations.map((rec) => {
-            const isRationaleOpen = expandedRationale[rec.id];
+            const isRationaleOpen = Boolean(expandedRationale[rec.id]);
+            const isHighUrgency = rec.urgency === "alert";
 
             return (
-              <div
+              <article
                 key={rec.id}
-                className="rounded-lg border border-line bg-osso/20 p-4 flex flex-col gap-2.5 transition-all"
+                className={`rounded-xl border p-4 flex flex-col gap-3 transition-all ${
+                  isHighUrgency
+                    ? "border-profundo bg-lima/15"
+                    : "border-line bg-foreground/[0.02]"
+                }`}
               >
-                <div className="flex items-start justify-between gap-3">
-                  <div className="flex items-start gap-2.5">
-                    {rec.urgency === "alert" && (
-                      <AlertTriangle size={18} className="text-red-600 shrink-0 mt-0.5" />
+                <div className="flex items-start gap-3">
+                  <div className="mt-0.5 shrink-0 text-accent-text">
+                    {rec.urgency === "info" ? (
+                      <ShieldCheck size={18} />
+                    ) : (
+                      <AlertTriangle size={18} />
                     )}
-                    {rec.urgency === "warning" && (
-                      <AlertTriangle size={18} className="text-amber-600 shrink-0 mt-0.5" />
-                    )}
-                    {rec.urgency === "info" && (
-                      <ShieldCheck size={18} className="text-profundo shrink-0 mt-0.5" />
-                    )}
+                  </div>
 
-                    <div>
-                      <h4 className="font-semibold text-sm text-grafite">{rec.title}</h4>
-                      <p className="text-xs text-foreground/85 mt-1 leading-relaxed">{rec.message}</p>
-                      {rec.actionableStep && (
-                        <p className="text-xs font-semibold text-profundo mt-1.5 flex items-center gap-1">
-                          <span>→ Sugestão prática:</span>
-                          <span className="font-normal text-foreground">{rec.actionableStep}</span>
-                        </p>
-                      )}
-                    </div>
+                  <div className="flex-1">
+                    <h3 className="font-semibold text-sm text-foreground">
+                      {rec.title}
+                    </h3>
+                    <p className="text-xs text-muted mt-1 leading-relaxed">
+                      {rec.message}
+                    </p>
+                    {rec.actionableStep && (
+                      <p className="text-xs font-medium text-foreground mt-2 flex items-center gap-1.5">
+                        <Activity size={13} className="text-accent-text shrink-0" />
+                        <span>Sugestão prática: {rec.actionableStep}</span>
+                      </p>
+                    )}
                   </div>
                 </div>
 
-                {/* Botão de Explicabilidade Obrigatória (§21.1) */}
-                <div className="border-t border-line/50 pt-2 flex flex-col">
+                <div className="border-t border-line/60 pt-2.5 flex flex-col">
                   <button
+                    type="button"
+                    aria-expanded={isRationaleOpen}
                     onClick={() => toggleRationale(rec.id)}
-                    className="text-[11px] text-muted hover:text-grafite flex items-center gap-1 cursor-pointer font-medium self-start"
+                    className="text-xs text-muted hover:text-foreground flex items-center gap-1.5 cursor-pointer font-mono self-start"
                   >
-                    <HelpCircle size={12} />
+                    <HelpCircle size={13} />
                     <span>Por que estou vendo esta recomendação?</span>
-                    {isRationaleOpen ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
+                    {isRationaleOpen ? (
+                      <ChevronUp size={13} />
+                    ) : (
+                      <ChevronDown size={13} />
+                    )}
                   </button>
 
                   {isRationaleOpen && (
-                    <div className="mt-2 p-3 rounded-md bg-surface border border-line text-[11px] text-muted leading-relaxed font-mono">
+                    <div className="mt-2.5 p-3.5 rounded-lg bg-surface border border-line text-xs text-muted leading-relaxed font-mono">
                       {rec.scientificRationale}
                     </div>
                   )}
                 </div>
-              </div>
+              </article>
             );
           })}
         </div>
-      </div>
+      </section>
     </div>
   );
 }

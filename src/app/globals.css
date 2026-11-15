@@ -85,4 +85,66 @@ body {
 :focus-visible {
   outline: 2px solid var(--profundo);
   outline-offset: 2px;
+  border-radius: 4px;
+}
+[data-theme="dark"] :focus-visible { outline-color: var(--lima); }
+
+html { scroll-behavior: smooth; }
+::selection { background: var(--lima); color: var(--grafite); }
+
+/* ---------- Primitivos de UI (compatíveis com tema claro/escuro) ---------- */
+.card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  box-shadow: 0 1px 2px rgb(21 28 26 / 0.04);
+  transition: border-color .2s ease, box-shadow .2s ease, transform .2s ease;
+}
+.card-interactive:hover {
+  border-color: var(--mineral);
+  box-shadow: 0 8px 24px -12px rgb(21 28 26 / 0.18);
+  transform: translateY(-1px);
+}
+
+.btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+  height: 40px; padding: 0 16px; border-radius: var(--radius-md);
+  font-size: 14px; font-weight: 600; cursor: pointer;
+  transition: background-color .15s ease, transform .1s ease, border-color .15s ease, opacity .15s ease;
+}
+.btn:active { transform: scale(.98); }
+.btn:disabled { opacity: .5; cursor: not-allowed; }
+.btn-primary { background: var(--lima); color: var(--grafite); }
+.btn-primary:hover:not(:disabled) { background: #d4e48a; }
+.btn-dark { background: var(--grafite); color: var(--osso); }
+.btn-dark:hover:not(:disabled) { background: var(--noite); }
+[data-theme="dark"] .btn-dark { background: var(--osso); color: var(--grafite); }
+.btn-ghost { border: 1px solid var(--border); color: var(--foreground); background: transparent; }
+.btn-ghost:hover:not(:disabled) { background: color-mix(in srgb, var(--foreground) 6%, transparent); }
+
+.input {
+  width: 100%; height: 40px; padding: 0 12px; border-radius: var(--radius-md);
+  border: 1px solid var(--border); background: var(--surface); color: var(--foreground);
+  transition: border-color .15s ease, box-shadow .15s ease;
+}
+.input:focus { outline: none; border-color: var(--profundo); box-shadow: 0 0 0 3px color-mix(in srgb, var(--lima) 45%, transparent); }
+
+.chip {
+  display: inline-flex; align-items: center; gap: 6px; padding: 2px 10px;
+  border-radius: 999px; font-size: 12px; font-weight: 500;
+  background: color-mix(in srgb, var(--foreground) 7%, transparent); color: var(--muted);
+}
+
+.skeleton {
+  border-radius: var(--radius-md);
+  background: linear-gradient(90deg, color-mix(in srgb, var(--foreground) 6%, transparent) 25%, color-mix(in srgb, var(--foreground) 12%, transparent) 37%, color-mix(in srgb, var(--foreground) 6%, transparent) 63%);
+  background-size: 400% 100%; animation: shimmer 1.4s ease infinite;
+}
+@keyframes shimmer { 0% { background-position: 100% 50%; } 100% { background-position: 0 50%; } }
+
+@keyframes fade-up { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+.fade-up { animation: fade-up .4s ease both; }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: .01ms !important; transition-duration: .01ms !important; scroll-behavior: auto !important; }
 }
