@@ -7,7 +7,13 @@ import { Users, UserPlus, Trophy } from "lucide-react";
 
 export const instant = false;
 
-async function FeedLoader({ tab }: { tab: "explore" | "teams" | "following" }) {
+async function FeedLoader({
+  searchParams,
+}: {
+  searchParams: Promise<{ tab?: "explore" | "teams" | "following" }>;
+}) {
+  const resolved = await searchParams;
+  const tab = resolved.tab || "explore";
   const posts = await getCommunityFeed(tab);
   return <CommunityFeed posts={posts} activeTab={tab} />;
 }
@@ -27,12 +33,9 @@ function CommunitySkeleton() {
   );
 }
 
-export default async function ComunidadePage(props: {
+export default function ComunidadePage(props: {
   searchParams: Promise<{ tab?: "explore" | "teams" | "following" }>;
 }) {
-  const searchParams = await props.searchParams;
-  const currentTab = searchParams.tab || "explore";
-
   return (
     <div className="min-h-screen bg-background text-foreground flex flex-col pb-20 md:pb-0">
       <Navbar />
@@ -68,7 +71,7 @@ export default async function ComunidadePage(props: {
         </div>
 
         <Suspense fallback={<CommunitySkeleton />}>
-          <FeedLoader tab={currentTab} />
+          <FeedLoader searchParams={props.searchParams} />
         </Suspense>
       </main>
     </div>

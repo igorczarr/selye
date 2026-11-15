@@ -4,6 +4,7 @@ import { db } from "@/db";
 import * as schema from "@/db/schema";
 import { eq, desc, and } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
+import { connection } from "next/server";
 import { getOrCreateDemoUser } from "./workout";
 
 export interface CreateTeamInput {
@@ -51,6 +52,12 @@ export async function createTeam(input: CreateTeamInput) {
 }
 
 export async function getAllTeams() {
+  try {
+    await connection();
+  } catch {
+    // Ignora se executado fora do escopo HTTP do Next.js
+  }
+
   const teamsList = await db
     .select({
       id: schema.teams.id,

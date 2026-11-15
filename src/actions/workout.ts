@@ -4,6 +4,7 @@ import { db } from "@/db";
 import * as schema from "@/db/schema";
 import { eq, desc, and, gte, inArray } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
+import { connection } from "next/server";
 import { currentUser } from "@clerk/nextjs/server";
 import { calculateWeeklyStreak } from "@/core/consistency/streak-calculator";
 
@@ -11,6 +12,12 @@ const DEMO_USER_EMAIL =
   process.env.ACTIVE_USER_EMAIL || "igorsantos979.is@gmail.com";
 
 export async function getOrCreateDemoUser() {
+  try {
+    await connection();
+  } catch {
+    // Fora de requisição Next.js (ex: testes unitários ou scripts CLI)
+  }
+
   let targetEmail = DEMO_USER_EMAIL;
 
   try {

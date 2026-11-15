@@ -1,4 +1,5 @@
 import { Suspense } from "react";
+import { connection } from "next/server";
 import { Navbar } from "@/components/navigation/navbar";
 import { AthletesDiscoveryView } from "@/components/network/athletes-discovery-view";
 import { getAthletesDiscovery } from "@/actions/network";
@@ -8,6 +9,7 @@ import * as schema from "@/db/schema";
 export const instant = false;
 
 async function AthletesLoader() {
+  await connection();
   const [athletes, allSports] = await Promise.all([
     getAthletesDiscovery(),
     db

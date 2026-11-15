@@ -4,6 +4,7 @@ import { db } from "@/db";
 import * as schema from "@/db/schema";
 import { eq, desc, and } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
+import { connection } from "next/server";
 import { getOrCreateDemoUser } from "./workout";
 
 export interface CreateRoutineInput {
@@ -255,6 +256,12 @@ export async function duplicateRoutine(programId: string) {
  * Retorna dados detalhados da ficha formatados para impressão / exportação PDF (§18)
  */
 export async function getRoutineForPrint(programId: string) {
+  try {
+    await connection();
+  } catch {
+    // Ignora se executado fora do escopo HTTP do Next.js
+  }
+
   const [program] = await db
     .select()
     .from(schema.trainingPrograms)

@@ -4,9 +4,16 @@ import { db } from "@/db";
 import * as schema from "@/db/schema";
 import { eq, desc } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
+import { connection } from "next/server";
 import { ExerciseCatalogService } from "@/core/catalog/api-ninjas-adapter";
 
 export async function getAdminOverview() {
+  try {
+    await connection();
+  } catch {
+    // Ignora se executado fora do escopo HTTP do Next.js
+  }
+
   const usersCount = (await db.select().from(schema.users)).length;
   const exercisesCount = (await db.select().from(schema.exercises)).length;
   const teamsCount = (await db.select().from(schema.teams)).length;

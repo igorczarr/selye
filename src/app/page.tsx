@@ -205,7 +205,7 @@ export default function HomePage() {
               · Seu corpo. Sua gestão. Sua evolução.
             </span>
           </div>
-          <p className="t-aux text-muted">© {new Date().getFullYear()} Selye</p>
+          <p className="t-aux text-muted">© 2026 Selye</p>
         </div>
       </footer>
     </div>

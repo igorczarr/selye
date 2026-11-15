@@ -1,4 +1,5 @@
 import { Suspense } from "react";
+import { connection } from "next/server";
 import Link from "next/link";
 import { ArrowLeft } from "lucide-react";
 import { Navbar } from "@/components/navigation/navbar";
@@ -9,6 +10,7 @@ import * as schema from "@/db/schema";
 export const instant = false;
 
 async function NewRoutineLoader() {
+  await connection();
   const catalogExercises = await db
     .select({
       id: schema.exercises.id,
