@@ -2,10 +2,12 @@ import { Suspense } from "react";
 import { Navbar } from "@/components/navigation/navbar";
 import { CoachDashboard } from "@/components/coach/coach-dashboard";
 import { getCoachDashboardData } from "@/actions/coach";
+import { requireRole } from "@/lib/auth-role";
 
 export const instant = false;
 
 async function CoachLoader() {
+  await requireRole("coach");
   const data = await getCoachDashboardData();
   return <CoachDashboard data={data} />;
 }
@@ -36,7 +38,7 @@ function CoachSkeleton() {
 
 export default function CoachPage() {
   return (
-    <div className="min-h-screen bg-background text-foreground flex flex-col pb-20 md:pb-0">
+    <div className="min-h-screen bg-background text-foreground flex flex-col pb-24">
       <Navbar />
       <main className="max-w-5xl mx-auto px-4 sm:px-6 py-8 flex-1 w-full">
         <Suspense fallback={<CoachSkeleton />}>

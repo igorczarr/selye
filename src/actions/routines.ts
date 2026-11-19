@@ -2,15 +2,17 @@
 
 import { db } from "@/db";
 import * as schema from "@/db/schema";
-import { eq, desc, and } from "drizzle-orm";
+import { eq, desc, asc, and } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { connection } from "next/server";
 import { getOrCreateDemoUser } from "./workout";
+import { sortRoutinesChronologically } from "@/lib/week";
 
 export interface CreateRoutineInput {
   title: string;
   description?: string;
   modalityCode?: string;
+  dayOfWeek?: number | null;
   exercises: {
     exerciseId: string;
     orderIndex: number;
@@ -60,6 +62,8 @@ export async function createRoutine(input: CreateRoutineInput) {
     .values({
       programVersionId: version.id,
       title: input.title,
+      dayOfWeek:
+        typeof input.dayOfWeek === "number" ? input.dayOfWeek : null,
       orderIndex: 1,
       notes: input.description,
     })
@@ -120,22 +124,29 @@ export async function getUserRoutines() {
       const templates = await db
         .select()
         .from(schema.workoutTemplates)
-        .where(eq(schema.workoutTemplates.programVersionId, curVersion.id));
+        .where(eq(schema.workoutTemplates.programVersionId, curVersion.id))
+        .orderBy(asc(schema.workoutTemplates.orderIndex));
 
       const templatesWithExercises = await Promise.all(
         templates.map(async (t) => {
           const prescriptions = await db
             .select({
               id: schema.templatePrescriptions.id,
+              exerciseId: schema.templatePrescriptions.exerciseId,
               orderIndex: schema.templatePrescriptions.orderIndex,
               targetSets: schema.templatePrescriptions.targetSets,
               targetReps: schema.templatePrescriptions.targetReps,
               targetLoadKg: schema.templatePrescriptions.targetLoadKg,
               restSeconds: schema.templatePrescriptions.restSeconds,
               setType: schema.templatePrescriptions.setType,
+              notes: schema.templatePrescriptions.notes,
               exerciseNamePt: schema.exercises.namePt,
               exerciseNameEn: schema.exercises.nameEn,
               secondaryMuscles: schema.exercises.secondaryMuscles,
+              instructionsPt: schema.exercises.instructionsPt,
+              safetyInfoPt: schema.exercises.safetyInfoPt,
+              difficulty: schema.exercises.difficulty,
+              equipmentCodes: schema.exercises.equipmentCodes,
             })
             .from(schema.templatePrescriptions)
             .innerJoin(
@@ -157,7 +168,7 @@ export async function getUserRoutines() {
     })
   );
 
-  return detailedPrograms;
+  return sortRoutinesChronologically(detailedPrograms);
 }
 
 /**

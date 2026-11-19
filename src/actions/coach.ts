@@ -5,8 +5,10 @@ import * as schema from "@/db/schema";
 import { eq, desc, and } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { getOrCreateDemoUser } from "./workout";
+import { assertActionRole } from "@/lib/auth-role";
 
 export async function getCoachDashboardData() {
+  await assertActionRole("coach");
   const coachUser = await getOrCreateDemoUser();
 
   // Garante que o usuário tem registro como Coach
@@ -86,6 +88,7 @@ export async function publishProgramVersion(
   newPlanData: any,
   changeLog: string
 ) {
+  await assertActionRole("coach");
   // 1. Descobre a versão anterior
   const versions = await db
     .select()

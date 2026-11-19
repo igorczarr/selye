@@ -1,8 +1,12 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { addDailyMessage, syncMuscleGroupExercises } from "@/actions/admin";
-import { RefreshCw, Shield, CheckCircle2, X } from "lucide-react";
+import {
+  addDailyMessage,
+  syncMuscleGroupExercises,
+  attachExerciseMedia,
+} from "@/actions/admin";
+import { RefreshCw, Shield, CheckCircle2, X, Video } from "lucide-react";
 
 interface AdminPanelProps {
   data: {
@@ -13,6 +17,7 @@ interface AdminPanelProps {
       sessionsCount: number;
     };
     messages: any[];
+    exercises?: { id: string; namePt: string; mediaUrls: string[] | null }[];
   };
 }
 
@@ -27,6 +32,10 @@ export function AdminPanel({ data }: AdminPanelProps) {
   const [msgAuthor, setMsgAuthor] = useState("Selye Editorial");
 
   const [selectedMuscle, setSelectedMuscle] = useState("chest");
+  const [selectedExerciseId, setSelectedExerciseId] = useState(
+    data.exercises?.[0]?.id || ""
+  );
+  const [mediaUrlInput, setMediaUrlInput] = useState("");
   const [statusBanner, setStatusBanner] = useState<string | null>(null);
 
   const handleAddMessage = (e: React.FormEvent) => {
@@ -50,6 +59,21 @@ export function AdminPanel({ data }: AdminPanelProps) {
       const count = await syncMuscleGroupExercises(selectedMuscle);
       setStatusBanner(
         `Sincronização concluída: ${count} movimentos verificados e atualizados no catálogo.`
+      );
+    });
+  };
+
+  const handleAttachMedia = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedExerciseId || !mediaUrlInput.trim()) return;
+    startTransition(async () => {
+      const total = await attachExerciseMedia(
+        selectedExerciseId,
+        mediaUrlInput.trim()
+      );
+      setMediaUrlInput("");
+      setStatusBanner(
+        `Mídia vinculada com sucesso. O movimento agora possui ${total} item(ns) de mídia.`
       );
     });
   };
@@ -299,6 +323,50 @@ export function AdminPanel({ data }: AdminPanelProps) {
             </span>
           </button>
         </div>
+
+        {/* Curadoria de Vídeo / Imagem por Exercício */}
+        {data.exercises && data.exercises.length > 0 && (
+          <form
+            onSubmit={handleAttachMedia}
+            className="border-t border-line pt-4 flex flex-col gap-3"
+          >
+            <div className="flex items-center gap-2">
+              <Video size={14} className="text-accent-text" />
+              <span className="t-label !text-accent-text">
+                Anexar Vídeo (YouTube / MP4) ou Imagem Passo a Passo
+              </span>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-12 gap-2.5">
+              <select
+                value={selectedExerciseId}
+                onChange={(e) => setSelectedExerciseId(e.target.value)}
+                aria-label="Selecionar exercício para anexar mídia"
+                className="input h-10 sm:col-span-5 text-xs"
+              >
+                {data.exercises.map((ex) => (
+                  <option key={ex.id} value={ex.id}>
+                    {ex.namePt} ({ex.mediaUrls?.length || 0} mídias)
+                  </option>
+                ))}
+              </select>
+              <input
+                type="url"
+                value={mediaUrlInput}
+                onChange={(e) => setMediaUrlInput(e.target.value)}
+                placeholder="https://youtube.com/watch?v=... ou .mp4 / .jpg"
+                aria-label="URL do vídeo ou imagem"
+                className="input h-10 sm:col-span-5 text-xs"
+              />
+              <button
+                type="submit"
+                disabled={isPending || !mediaUrlInput.trim()}
+                className="btn btn-primary h-10 sm:col-span-2 text-xs"
+              >
+                Vincular
+              </button>
+            </div>
+          </form>
+        )}
       </section>
     </div>
   );

@@ -1,6 +1,8 @@
 import type { Metadata, Viewport } from "next";
 import { Inter, IBM_Plex_Mono } from "next/font/google";
 import { ClerkProvider } from "@clerk/nextjs";
+import { ExerciseSheetProvider } from "@/components/catalog/exercise-sheet";
+import { selyeClerkPtBR } from "@/components/auth/clerk-localization-ptbr";
 import "./globals.css";
 
 const inter = Inter({
@@ -49,7 +51,9 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
         <script dangerouslySetInnerHTML={{ __html: THEME_INIT_SCRIPT }} />
       </head>
       <body className="min-h-full flex flex-col">
-        <ClerkProvider>{children}</ClerkProvider>
+        <ClerkProvider localization={selyeClerkPtBR}>
+          <ExerciseSheetProvider>{children}</ExerciseSheetProvider>
+        </ClerkProvider>
       </body>
     </html>
   );

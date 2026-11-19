@@ -1,9 +1,9 @@
 ﻿import { Suspense } from "react";
+import Link from "next/link";
+import { ArrowUpRight, Flame, CalendarCheck2 } from "lucide-react";
 import { Navbar } from "@/components/navigation/navbar";
 import { getDashboardData } from "@/actions/workout";
 import { WorkoutRunner } from "@/components/workout/workout-runner";
-import { ExerciseExplorer } from "@/components/catalog/exercise-explorer";
-import { SelyeLogo } from "@/components/brand/logo";
 
 export const instant = false;
 
@@ -19,195 +19,256 @@ function formatVolume(kg: number): string {
 
 async function DashboardContent() {
   const data = await getDashboardData();
-  const { stats } = data;
-  const frequencyMet = stats.weeklyFrequencyAvg >= stats.targetDaysPerWeek;
+  const { stats, dailyEditorial, performanceSummary } = data;
+  const { quote } = dailyEditorial;
+  const { acwrResult, headlineRecommendation, last7DaysChart } =
+    performanceSummary;
+  const maxLoad = Math.max(1, ...last7DaysChart.map((d) => d.load));
+  const hasHistory = stats.totalCompletedWorkouts > 0;
 
   return (
     <>
-      {/* Nota do Dia */}
-      <section className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-noite to-grafite text-osso p-6 sm:p-10 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-6 shadow-lg fade-up before:absolute before:-right-24 before:-top-24 before:h-64 before:w-64 before:rounded-full before:bg-lima/10 before:blur-3xl">
-        <div className="space-y-2 max-w-2xl">
-          <div className="flex items-center gap-2">
-            <span className="w-2 h-2 rounded-full bg-lima" />
-            <span className="t-label !text-nevoa">
-              Nota do dia · {data.dailyNote.category}
+      <div className="bento-grid">
+        {/* Frase do dia + contagem anual */}
+        <section className="col-span-12 lg:col-span-8 relative overflow-hidden rounded-2xl bg-gradient-to-br from-noite to-grafite text-osso p-6 sm:p-8 flex flex-col justify-between gap-6 shadow-lg fade-up">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div className="flex items-center gap-2">
+              <span className="w-2 h-2 rounded-full bg-lima" />
+              <span className="t-label !text-nevoa">
+                Nota do dia · {quote.categoryLabelPt}
+              </span>
+            </div>
+            <span className="t-data text-xs px-2.5 py-1 rounded-full bg-white/8 text-lima">
+              {dailyEditorial.dayCounterLabel}
             </span>
           </div>
-          <p className="t-h3 sm:t-h2 !text-osso italic font-normal">
-            &ldquo;{data.dailyNote.messageText}&rdquo;
-          </p>
-          <p className="t-aux text-nevoa">— {data.dailyNote.author}</p>
-        </div>
-        <div className="hidden lg:flex flex-col items-end text-right border-l border-white/10 pl-6">
-          <span className="t-label !text-nevoa">Posicionamento</span>
-          <span className="t-aux text-osso mt-1">Organizar. Registrar.</span>
-          <span className="t-aux text-osso">Acompanhar.</span>
-        </div>
-      </section>
 
-      {/* Grade de Indicadores Reais */}
-      <section className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        <div className="card card-interactive p-5 flex flex-col justify-between">
-          <span className="t-label">Volume (28d)</span>
-          <p className="t-data text-2xl mt-1 text-foreground">
-            {formatVolume(stats.monthlyVolumeKg)}
-          </p>
-          <span className="t-aux text-muted mt-2">
-            {stats.monthlyVolumeKg > 0
-              ? "Séries concluídas no ciclo"
-              : "Complete 1 treino para iniciar"}
-          </span>
-        </div>
+          <figure className="space-y-3">
+            <blockquote className="text-xl sm:text-2xl leading-snug font-light italic text-osso text-balance">
+              &ldquo;{quote.messageText}&rdquo;
+            </blockquote>
+            <figcaption className="t-aux text-nevoa">
+              — <span className="text-osso font-semibold">{quote.author}</span>
+              <span className="hidden sm:inline"> · {quote.roleOrContext}</span>
+            </figcaption>
+          </figure>
 
-        <div className="card card-interactive p-5 flex flex-col justify-between">
-          <span className="t-label">Frequência</span>
-          <p className="t-data text-2xl mt-1 text-foreground">
-            {stats.weeklyFrequencyAvg.toLocaleString("pt-BR")}{" "}
-            <span className="text-xs font-sans text-muted">dias/sem</span>
+          <div className="space-y-2">
+            <div
+              className="h-1 w-full rounded-full bg-white/10 overflow-hidden"
+              role="progressbar"
+              aria-valuenow={dailyEditorial.yearProgressPercent}
+              aria-valuemin={0}
+              aria-valuemax={100}
+              aria-label={`${dailyEditorial.yearProgressPercent}% de ${dailyEditorial.year} concluído`}
+            >
+              <div
+                className="h-full bg-lima"
+                style={{ width: `${dailyEditorial.yearProgressPercent}%` }}
+              />
+            </div>
+            <p className="t-aux text-nevoa flex items-center gap-1.5">
+              <CalendarCheck2 size={13} className="text-lima shrink-0" />
+              <span>
+                <span className="text-osso font-semibold">
+                  {stats.activeDaysInYear}
+                </span>{" "}
+                {stats.activeDaysInYear === 1 ? "dia ativo" : "dias ativos"} em{" "}
+                {dailyEditorial.year}
+              </span>
+            </p>
+          </div>
+        </section>
+
+        {/* Forma de hoje (resumo de Evolução) */}
+        <Link
+          href="/evolucao"
+          className="col-span-12 lg:col-span-4 card card-interactive p-5 flex flex-col justify-between gap-4 group"
+        >
+          <div className="flex items-start justify-between gap-2">
+            <div>
+              <span className="t-label">Forma de hoje</span>
+              <p className="t-data text-3xl font-semibold mt-1 text-foreground">
+                {acwrResult.acwr.toFixed(2)}
+              </p>
+            </div>
+            <div className="flex flex-col items-end gap-1.5">
+              <span className="px-2.5 py-0.5 rounded-full text-[11px] font-mono font-semibold bg-lima text-grafite">
+                {acwrResult.statusLabel}
+              </span>
+              <ArrowUpRight
+                size={16}
+                className="text-muted group-hover:text-foreground transition-colors"
+              />
+            </div>
+          </div>
+
+          <p className="text-xs text-muted leading-relaxed line-clamp-3">
+            {headlineRecommendation
+              ? headlineRecommendation.actionableStep ||
+                headlineRecommendation.message
+              : "Registre treinos para calibrar sua carga aguda e crônica."}
           </p>
-          <span
-            className={`t-aux mt-2 font-medium ${
-              frequencyMet ? "text-accent-text" : "text-muted"
-            }`}
+
+          <div
+            className="grid grid-cols-7 gap-1.5 items-end h-14"
+            aria-label="Carga dos últimos 7 dias"
           >
-            Meta: {stats.targetDaysPerWeek} dias {frequencyMet ? "✓" : ""}
-          </span>
-        </div>
+            {last7DaysChart.map((d, i) => {
+              const isToday = i === last7DaysChart.length - 1;
+              const h = d.load > 0 ? Math.max(14, (d.load / maxLoad) * 100) : 8;
+              return (
+                <div
+                  key={d.date}
+                  className="flex flex-col items-center gap-1 h-full justify-end min-w-0"
+                  title={`${d.dayName}: ${d.load} UA`}
+                >
+                  <div
+                    className={`w-full rounded-sm ${
+                      d.load > 0
+                        ? isToday
+                          ? "bg-lima"
+                          : "bg-profundo"
+                        : "bg-foreground/10"
+                    }`}
+                    style={{ height: `${h}%` }}
+                  />
+                  <span className="text-[9px] font-mono text-muted leading-none">
+                    {d.dayName.charAt(0)}
+                  </span>
+                </div>
+              );
+            })}
+          </div>
+        </Link>
+      </div>
 
-        <div className="card card-interactive p-5 flex flex-col justify-between">
-          <span className="t-label">Streak Semanal</span>
-          <p className="t-data text-2xl mt-1 text-foreground flex items-center gap-1.5">
-            <span>{stats.currentWeeklyStreak}</span>
-            <span className="text-xs font-mono px-1.5 py-0.5 rounded bg-lima text-grafite">
-              {stats.currentWeeklyStreak === 1 ? "semana" : "semanas"}
-            </span>
-          </p>
-          <span className="t-aux text-muted mt-2">
-            Recorde: {stats.bestWeeklyStreak}{" "}
-            {stats.bestWeeklyStreak === 1 ? "semana" : "semanas"}
-          </span>
-        </div>
-
-        <div className="card card-interactive p-5 flex flex-col justify-between">
-          <span className="t-label">Treinos Concluídos</span>
-          <p className="t-data text-2xl mt-1 text-foreground">
-            {stats.totalCompletedWorkouts}
-          </p>
-          <span className="t-aux text-muted mt-2">Histórico consolidado</span>
-        </div>
-      </section>
-
-      {/* Execução em Tempo Real */}
+      {/* Treino de hoje: carrossel de fichas / execução */}
       <section className="flex flex-col gap-3">
-        <div className="flex items-center justify-between">
+        <div className="flex items-end justify-between gap-3">
           <div>
             <span className="t-label">Treino de hoje</span>
-            <h2 className="t-h2 mt-0.5">Execução do treino</h2>
+            <h2 className="t-h2 mt-0.5">
+              {data.activeSession ? "Execução do treino" : "Escolha sua ficha"}
+            </h2>
           </div>
+          <Link
+            href="/treinos"
+            className="t-aux text-accent-text hover:underline shrink-0"
+          >
+            Ver todas
+          </Link>
         </div>
         <WorkoutRunner
           initialSession={data.activeSession}
-          catalogSample={data.exerciseList}
+          sessionExercises={data.activeSessionExercises}
+          routines={data.routines.map((r) => ({
+            id: r.id,
+            title: r.title,
+            modalityCode: r.modalityCode,
+            templates: r.templates?.map((t) => ({
+              dayOfWeek: t.dayOfWeek,
+              prescriptions: t.prescriptions.map((p) => ({ id: p.id })),
+            })),
+          }))}
         />
       </section>
 
-      {/* Catálogo de Exercícios */}
-      <section>
-        <ExerciseExplorer exercises={data.exerciseList} />
-      </section>
-
-      {/* Histórico Recente e Ritual Pós-Treino */}
-      <section className="card p-6 flex flex-col gap-4">
-        <div className="flex justify-between items-center">
-          <div>
-            <span className="t-label">Comunidade</span>
-            <h2 className="t-h2 mt-1">Ritual pós-treino</h2>
+      {/* Indicadores */}
+      {hasHistory ? (
+        <section className="grid grid-cols-2 md:grid-cols-4 gap-3">
+          <div className="card p-4 flex flex-col gap-1">
+            <span className="t-label">Volume (28d)</span>
+            <p className="t-data text-xl text-foreground">
+              {formatVolume(stats.monthlyVolumeKg)}
+            </p>
           </div>
-          <span className="t-data text-xs text-muted">
-            {data.recentSessions.length}{" "}
-            {data.recentSessions.length === 1 ? "registro" : "registros"}
-          </span>
-        </div>
+          <div className="card p-4 flex flex-col gap-1">
+            <span className="t-label">Frequência</span>
+            <p className="t-data text-xl text-foreground">
+              {stats.weeklyFrequencyAvg.toLocaleString("pt-BR")}
+              <span className="text-xs font-sans text-muted"> dias/sem</span>
+            </p>
+            <span className="t-aux text-muted">Meta: {stats.targetDaysPerWeek}</span>
+          </div>
+          <div className="card p-4 flex flex-col gap-1">
+            <span className="t-label">Streak semanal</span>
+            <p className="t-data text-xl text-foreground flex items-center gap-1.5">
+              <Flame size={16} className="text-accent-text" />
+              {stats.currentWeeklyStreak}
+            </p>
+            <span className="t-aux text-muted">Recorde: {stats.bestWeeklyStreak}</span>
+          </div>
+          <div className="card p-4 flex flex-col gap-1">
+            <span className="t-label">Treinos</span>
+            <p className="t-data text-xl text-foreground">
+              {stats.totalCompletedWorkouts}
+            </p>
+            <span className="t-aux text-muted">Histórico total</span>
+          </div>
+        </section>
+      ) : (
+        <section className="card p-5 text-sm text-muted">
+          Conclua seu primeiro treino para liberar volume, frequência e streak.
+        </section>
+      )}
 
-        {data.recentSessions.length === 0 ? (
-          <p className="text-sm text-muted">
-            Nenhuma sessão concluída ainda. Complete seu primeiro treino acima para gerar o relatório pós-treino.
-          </p>
-        ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+      {/* Últimos registros */}
+      {data.recentSessions.length > 0 && (
+        <section className="flex flex-col gap-3">
+          <h2 className="t-h3">Últimos treinos</h2>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
             {data.recentSessions.map((s) => (
               <div
                 key={s.id}
-                className="rounded-xl border border-line p-4 bg-foreground/[0.02] flex flex-col justify-between"
+                className="card p-4 flex items-center justify-between gap-3"
               >
-                <div>
-                  <div className="flex items-center justify-between">
-                    <span className="t-label !text-accent-text">
-                      SELYE TRAINING REPORT
-                    </span>
-                    <span className="t-data text-xs text-muted">
-                      {new Date(s.finishedAt || s.startedAt).toLocaleDateString(
-                        "pt-BR"
-                      )}
-                    </span>
-                  </div>
-                  <h3 className="font-semibold text-base mt-2 text-foreground">
-                    {s.title}
-                  </h3>
-                  <p className="t-aux text-muted mt-1">
-                    RPE da sessão: {s.rpeSession || 8}/10 · Fuso: {s.timezone}
+                <div className="min-w-0">
+                  <p className="font-semibold text-sm truncate">{s.title}</p>
+                  <p className="t-aux text-muted">
+                    RPE {s.rpeSession || 8}/10
                   </p>
                 </div>
-                <div className="mt-4 pt-3 border-t border-line flex items-center justify-between text-xs font-mono">
-                  <span className="text-muted">Concluído</span>
-                  <span className="text-accent-text font-semibold">
-                    Registrado no Histórico
-                  </span>
-                </div>
+                <span className="t-data text-xs text-muted shrink-0">
+                  {new Date(s.finishedAt || s.startedAt).toLocaleDateString(
+                    "pt-BR"
+                  )}
+                </span>
               </div>
             ))}
           </div>
-        )}
-      </section>
+        </section>
+      )}
     </>
   );
 }
 
 export default function HomePage() {
   return (
-    <div className="min-h-screen bg-background text-foreground flex flex-col pb-20 md:pb-0">
+    <div className="min-h-screen bg-background text-foreground flex flex-col pb-24">
       <Navbar />
 
-      <main className="max-w-5xl mx-auto px-4 sm:px-6 py-8 flex-1 flex flex-col gap-8 w-full">
+      <main className="max-w-5xl mx-auto px-4 sm:px-6 py-6 flex-1 flex flex-col gap-6 w-full">
         <Suspense
           fallback={
             <div className="flex flex-col gap-4" aria-busy="true">
-              <div className="skeleton h-32" />
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+              <div className="bento-grid">
+                <div className="skeleton col-span-12 lg:col-span-8 h-56" />
+                <div className="skeleton col-span-12 lg:col-span-4 h-56" />
+              </div>
+              <div className="skeleton h-40" />
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
                 <div className="skeleton h-24" />
                 <div className="skeleton h-24" />
                 <div className="skeleton h-24" />
                 <div className="skeleton h-24" />
               </div>
-              <div className="skeleton h-64" />
             </div>
           }
         >
           <DashboardContent />
         </Suspense>
       </main>
-
-      <footer className="border-t border-line bg-surface py-8 mt-12">
-        <div className="max-w-5xl mx-auto px-4 sm:px-6 flex flex-col sm:flex-row items-center justify-between gap-4">
-          <div className="flex items-center gap-3">
-            <SelyeLogo height={20} className="text-foreground" />
-            <span className="t-aux text-muted">
-              · Seu corpo. Sua gestão. Sua evolução.
-            </span>
-          </div>
-          <p className="t-aux text-muted">© 2026 Selye</p>
-        </div>
-      </footer>
     </div>
   );
 }

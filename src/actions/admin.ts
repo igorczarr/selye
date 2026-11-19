@@ -6,6 +6,7 @@ import { eq, desc } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { connection } from "next/server";
 import { ExerciseCatalogService } from "@/core/catalog/api-ninjas-adapter";
+import { assertActionRole } from "@/lib/auth-role";
 
 export async function getAdminOverview() {
   try {
@@ -13,6 +14,7 @@ export async function getAdminOverview() {
   } catch {
     // Ignora se executado fora do escopo HTTP do Next.js
   }
+  await assertActionRole("admin");
 
   const usersCount = (await db.select().from(schema.users)).length;
   const exercisesCount = (await db.select().from(schema.exercises)).length;
@@ -25,6 +27,15 @@ export async function getAdminOverview() {
     .orderBy(desc(schema.dailyMessages.publishDate))
     .limit(10);
 
+  const exercisesList = await db
+    .select({
+      id: schema.exercises.id,
+      namePt: schema.exercises.namePt,
+      mediaUrls: schema.exercises.mediaUrls,
+    })
+    .from(schema.exercises)
+    .orderBy(schema.exercises.namePt);
+
   return {
     stats: {
       usersCount,
@@ -33,7 +44,34 @@ export async function getAdminOverview() {
       sessionsCount,
     },
     messages,
+    exercises: exercisesList,
   };
+}
+
+export async function attachExerciseMedia(exerciseId: string, mediaUrl: string) {
+  await assertActionRole("admin");
+  const cleanUrl = mediaUrl.trim();
+  if (!cleanUrl) throw new Error("Informe uma URL válida de vídeo ou imagem.");
+
+  const [existing] = await db
+    .select({ mediaUrls: schema.exercises.mediaUrls })
+    .from(schema.exercises)
+    .where(eq(schema.exercises.id, exerciseId))
+    .limit(1);
+
+  if (!existing) throw new Error("Exercício não encontrado.");
+
+  const current = Array.isArray(existing.mediaUrls) ? existing.mediaUrls : [];
+  const next = current.includes(cleanUrl) ? current : [...current, cleanUrl];
+
+  await db
+    .update(schema.exercises)
+    .set({ mediaUrls: next, updatedAt: new Date() })
+    .where(eq(schema.exercises.id, exerciseId));
+
+  revalidatePath("/admin");
+  revalidatePath("/treinos");
+  return next.length;
 }
 
 export async function addDailyMessage(
@@ -42,6 +80,7 @@ export async function addDailyMessage(
   category: string,
   author: string = "Selye Editorial"
 ) {
+  await assertActionRole("admin");
   await db
     .insert(schema.dailyMessages)
     .values({
@@ -61,6 +100,7 @@ export async function addDailyMessage(
 }
 
 export async function syncMuscleGroupExercises(muscle: string) {
+  await assertActionRole("admin");
   const service = new ExerciseCatalogService();
   const count = await service.syncExercisesFromNinja({ muscle });
   revalidatePath("/");

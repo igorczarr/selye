@@ -1,32 +1,134 @@
 "use client";
 
 import { useState, useEffect, useTransition } from "react";
+import { useRouter } from "next/navigation";
 import {
   formatDuration,
   calculateElapsedSeconds,
   calculateRestCountdown,
 } from "@/core/workout-engine/timer";
-import { startWorkout, finishWorkout } from "@/actions/workout";
-import { Play, Check, Timer, CheckCircle2, Dumbbell } from "lucide-react";
+import {
+  startWorkout,
+  finishWorkout,
+  updateSetLog,
+  cancelWorkout,
+} from "@/actions/workout";
+import { getWeekdayLabelPt, jsDayToMondayIndex } from "@/lib/week";
+import { ExerciseLink } from "@/components/catalog/exercise-link";
+import {
+  Play,
+  Check,
+  Timer,
+  CheckCircle2,
+  Dumbbell,
+  Info,
+  XCircle,
+} from "lucide-react";
+
+interface SetLogItem {
+  id: string;
+  setNumber: number;
+  weightKg: number | null;
+  reps: number | null;
+  isCompleted: boolean;
+}
+
+interface SessionExerciseItem {
+  id: string;
+  sessionExerciseId?: string;
+  namePt: string;
+  nameEn?: string | null;
+  secondaryMuscles?: string[] | null;
+  sets?: SetLogItem[];
+}
+
+interface RoutineCardData {
+  id: string;
+  title: string;
+  modalityCode: string;
+  templates?: {
+    dayOfWeek?: number | null;
+    prescriptions?: { id: string }[];
+  }[];
+}
 
 interface WorkoutRunnerProps {
   initialSession: any;
-  catalogSample: any[];
+  sessionExercises: SessionExerciseItem[];
+  routines: RoutineCardData[];
 }
 
 export function WorkoutRunner({
   initialSession,
-  catalogSample,
+  sessionExercises,
+  routines,
 }: WorkoutRunnerProps) {
+  const router = useRouter();
   const [session, setSession] = useState<any>(initialSession);
   const [isPending, startTransition] = useTransition();
   const [elapsedDisplay, setElapsedDisplay] = useState("00:00");
   const [restTargetSeconds, setRestTargetSeconds] = useState(90);
   const [restRemaining, setRestRemaining] = useState<number | null>(null);
   const [lastCompletedTime, setLastCompletedTime] = useState<Date | null>(null);
-  const [completedSets, setCompletedSets] = useState<Record<string, boolean>>({});
   const [sessionRpe, setSessionRpe] = useState<number>(8);
   const [isFinishedBannerOpen, setIsFinishedBannerOpen] = useState(false);
+
+  // Estado local otimista das séries (sincronizado com set_logs reais do banco)
+  const [setStateMap, setSetStateMap] = useState<
+    Record<string, { isCompleted: boolean; weightKg: number; reps: number }>
+  >(() => {
+    const initial: Record<
+      string,
+      { isCompleted: boolean; weightKg: number; reps: number }
+    > = {};
+    for (const ex of sessionExercises) {
+      const sets = ex.sets?.length
+        ? ex.sets
+        : [1, 2, 3].map((n) => ({
+            id: `${ex.sessionExerciseId ?? ex.id}_${n}`,
+            setNumber: n,
+            weightKg: 40,
+            reps: 10,
+            isCompleted: false,
+          }));
+      for (const s of sets) {
+        initial[s.id] = {
+          isCompleted: Boolean(s.isCompleted),
+          weightKg: s.weightKg ?? 0,
+          reps: s.reps ?? 10,
+        };
+      }
+    }
+    return initial;
+  });
+
+  // Atualiza mapa quando sessionExercises recarrega após iniciar nova ficha
+  useEffect(() => {
+    setSession(initialSession);
+    const next: Record<
+      string,
+      { isCompleted: boolean; weightKg: number; reps: number }
+    > = {};
+    for (const ex of sessionExercises) {
+      const sets = ex.sets?.length
+        ? ex.sets
+        : [1, 2, 3].map((n) => ({
+            id: `${ex.sessionExerciseId ?? ex.id}_${n}`,
+            setNumber: n,
+            weightKg: 40,
+            reps: 10,
+            isCompleted: false,
+          }));
+      for (const s of sets) {
+        next[s.id] = {
+          isCompleted: Boolean(s.isCompleted),
+          weightKg: s.weightKg ?? 0,
+          reps: s.reps ?? 10,
+        };
+      }
+    }
+    setSetStateMap(next);
+  }, [initialSession, sessionExercises]);
 
   useEffect(() => {
     if (!session || session.status !== "in_progress") {
@@ -53,11 +155,12 @@ export function WorkoutRunner({
     return () => clearInterval(interval);
   }, [session, lastCompletedTime, restRemaining, restTargetSeconds]);
 
-  const handleStart = () => {
+  const handleStart = (programId?: string, title?: string) => {
     setIsFinishedBannerOpen(false);
     startTransition(async () => {
-      const newSession = await startWorkout("Treino A · Força e Estabilidade");
+      const newSession = await startWorkout(title, programId);
       setSession(newSession);
+      router.refresh();
     });
   };
 
@@ -66,20 +169,69 @@ export function WorkoutRunner({
     startTransition(async () => {
       await finishWorkout(session.id, sessionRpe);
       setSession(null);
-      setCompletedSets({});
       setRestRemaining(null);
       setIsFinishedBannerOpen(true);
+      router.refresh();
     });
   };
 
-  const toggleSet = (key: string) => {
-    const nextState = !completedSets[key];
-    setCompletedSets((prev) => ({ ...prev, [key]: nextState }));
+  const handleCancel = () => {
+    if (!session) return;
+    startTransition(async () => {
+      await cancelWorkout(session.id);
+      setSession(null);
+      setRestRemaining(null);
+      router.refresh();
+    });
+  };
 
-    if (nextState) {
+  const isRealUuid = (id: string) =>
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id);
+
+  const toggleSet = (setId: string) => {
+    const current = setStateMap[setId] ?? {
+      isCompleted: false,
+      weightKg: 40,
+      reps: 10,
+    };
+    const nextCompleted = !current.isCompleted;
+
+    setSetStateMap((prev) => ({
+      ...prev,
+      [setId]: { ...current, isCompleted: nextCompleted },
+    }));
+
+    if (nextCompleted) {
       setRestTargetSeconds(90);
       setLastCompletedTime(new Date());
       setRestRemaining(90);
+    }
+
+    if (isRealUuid(setId)) {
+      updateSetLog(setId, {
+        isCompleted: nextCompleted,
+        weightKg: current.weightKg,
+        reps: current.reps,
+      }).catch(() => {});
+    }
+  };
+
+  const updateSetField = (
+    setId: string,
+    field: "weightKg" | "reps",
+    rawValue: string
+  ) => {
+    const parsed = Math.max(0, Number(rawValue) || 0);
+    const current = setStateMap[setId] ?? {
+      isCompleted: false,
+      weightKg: 40,
+      reps: 10,
+    };
+    const updated = { ...current, [field]: parsed };
+    setSetStateMap((prev) => ({ ...prev, [setId]: updated }));
+
+    if (isRealUuid(setId)) {
+      updateSetLog(setId, { [field]: parsed }).catch(() => {});
     }
   };
 
@@ -91,31 +243,88 @@ export function WorkoutRunner({
   };
 
   if (!session) {
+    const todayMondayIdx = jsDayToMondayIndex(new Date().getDay());
+
     return (
-      <div className="card p-6 sm:p-8 flex flex-col gap-5">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-          <div className="flex items-start gap-4">
-            <div className="w-11 h-11 rounded-xl bg-lima/25 text-foreground flex items-center justify-center shrink-0">
-              <Dumbbell size={20} strokeWidth={1.75} />
+      <div className="flex flex-col gap-4">
+        {routines.length === 0 ? (
+          <div className="card p-6 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+            <div className="flex items-start gap-4">
+              <div className="w-11 h-11 rounded-xl bg-lima/25 text-foreground flex items-center justify-center shrink-0">
+                <Dumbbell size={20} strokeWidth={1.75} />
+              </div>
+              <div>
+                <h3 className="t-h3">Nenhuma ficha cadastrada</h3>
+                <p className="text-muted text-sm mt-1">
+                  Crie sua primeira ficha para treinar com séries e cargas planejadas.
+                </p>
+              </div>
             </div>
-            <div>
-              <span className="t-label">Pronto para iniciar</span>
-              <h3 className="t-h2 mt-0.5">Sessão de Treinamento</h3>
-              <p className="text-muted text-sm mt-1">
-                Inicie o cronômetro para registrar séries em tempo real e controlar os intervalos de recuperação.
-              </p>
+            <button
+              type="button"
+              onClick={() => handleStart()}
+              disabled={isPending}
+              className="btn btn-primary h-11 px-6 shrink-0"
+            >
+              <Play size={15} fill="currentColor" />
+              <span>{isPending ? "Iniciando..." : "Treino livre"}</span>
+            </button>
+          </div>
+        ) : (
+          <div className="-mx-4 sm:mx-0 overflow-x-auto no-scrollbar snap-x snap-mandatory">
+            <div className="flex gap-3 px-4 sm:px-0 pb-1">
+              {routines.map((r) => {
+                const tpl = r.templates?.[0];
+                const day = tpl?.dayOfWeek;
+                const isToday =
+                  typeof day === "number" &&
+                  jsDayToMondayIndex(day) === todayMondayIdx;
+                const count = tpl?.prescriptions?.length ?? 0;
+
+                return (
+                  <article
+                    key={r.id}
+                    className={`card card-interactive snap-start shrink-0 w-[240px] p-4 flex flex-col justify-between gap-4 ${
+                      isToday ? "border-lima ring-1 ring-lima/60" : ""
+                    }`}
+                  >
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-1.5">
+                        {typeof day === "number" && (
+                          <span
+                            className={`px-2 py-0.5 rounded-full text-[11px] font-mono font-semibold ${
+                              isToday
+                                ? "bg-lima text-grafite"
+                                : "bg-foreground/8 text-muted"
+                            }`}
+                          >
+                            {isToday ? "Hoje" : getWeekdayLabelPt(day, "short")}
+                          </span>
+                        )}
+                        <span className="t-data text-[11px] text-muted">
+                          {count} {count === 1 ? "exercício" : "exercícios"}
+                        </span>
+                      </div>
+                      <h3 className="font-semibold text-sm mt-2 line-clamp-2 text-foreground">
+                        {r.title}
+                      </h3>
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={() => handleStart(r.id, r.title)}
+                      disabled={isPending}
+                      className="btn btn-dark h-10 w-full text-xs"
+                    >
+                      <Play size={13} fill="currentColor" />
+                      <span>{isPending ? "Iniciando..." : "Treinar"}</span>
+                    </button>
+                  </article>
+                );
+              })}
             </div>
           </div>
-
-          <button
-            onClick={handleStart}
-            disabled={isPending}
-            className="btn btn-primary h-11 px-6 shrink-0"
-          >
-            <Play size={15} fill="currentColor" />
-            <span>{isPending ? "Iniciando..." : "Iniciar Treino de Hoje"}</span>
-          </button>
-        </div>
+        )}
 
         {isFinishedBannerOpen && (
           <div
@@ -138,18 +347,38 @@ export function WorkoutRunner({
     );
   }
 
-  const sampleExercises = catalogSample.slice(0, 4);
-  const totalSetsCount = sampleExercises.length * 3;
-  const completedSetsCount = Object.values(completedSets).filter(Boolean).length;
+  const normalizedExercises = sessionExercises.map((ex) => ({
+    ...ex,
+    resolvedSets:
+      ex.sets && ex.sets.length > 0
+        ? ex.sets
+        : [1, 2, 3].map((n) => ({
+            id: `${ex.sessionExerciseId ?? ex.id}_${n}`,
+            setNumber: n,
+            weightKg: 40,
+            reps: 10,
+            isCompleted: false,
+          })),
+  }));
+
+  const allSetIds = normalizedExercises.flatMap((ex) =>
+    ex.resolvedSets.map((s) => s.id)
+  );
+  const totalSetsCount = allSetIds.length;
+  const completedSetsCount = allSetIds.filter(
+    (id) => setStateMap[id]?.isCompleted
+  ).length;
   const progressPercent =
-    totalSetsCount > 0 ? Math.round((completedSetsCount / totalSetsCount) * 100) : 0;
+    totalSetsCount > 0
+      ? Math.round((completedSetsCount / totalSetsCount) * 100)
+      : 0;
 
   return (
-    <div className="card p-6 flex flex-col gap-6">
+    <div className="card p-5 sm:p-6 flex flex-col gap-5">
       {/* Cabeçalho do Modo Foco */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-line pb-5">
-        <div>
-          <div className="flex items-center gap-2">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-line pb-4">
+        <div className="min-w-0">
+          <div className="flex items-center gap-2 flex-wrap">
             <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-mono font-semibold bg-lima text-grafite">
               <span className="w-2 h-2 rounded-full bg-grafite animate-pulse" />
               EM EXECUÇÃO
@@ -158,17 +387,30 @@ export function WorkoutRunner({
               {completedSetsCount}/{totalSetsCount} séries ({progressPercent}%)
             </span>
           </div>
-          <h3 className="t-h2 mt-2">{session.title}</h3>
+          <h3 className="t-h2 mt-2 truncate">{session.title}</h3>
           <p className="t-aux text-muted mt-0.5">
-            Musculação · Fuso {session.timezone}
+            Toque em qualquer movimento para abrir o passo a passo ilustrado.
           </p>
         </div>
 
-        <div className="flex items-center sm:flex-col sm:items-end justify-between bg-foreground/[0.03] sm:bg-transparent px-4 py-2.5 sm:p-0 rounded-xl border border-line sm:border-0">
-          <span className="t-label">Tempo decorrido</span>
-          <p className="t-data text-3xl font-semibold text-foreground mt-0.5">
-            {elapsedDisplay}
-          </p>
+        <div className="flex items-center justify-between sm:justify-end gap-4 shrink-0">
+          <div className="sm:text-right">
+            <span className="t-label block">Tempo</span>
+            <p className="t-data text-2xl sm:text-3xl font-semibold text-foreground">
+              {elapsedDisplay}
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={handleCancel}
+            disabled={isPending}
+            title="Descartar sessão e trocar ficha"
+            aria-label="Descartar sessão em andamento"
+            className="btn btn-ghost h-9 px-2.5 text-xs font-mono text-muted hover:text-foreground"
+          >
+            <XCircle size={15} />
+            <span className="hidden sm:inline">Trocar</span>
+          </button>
         </div>
       </div>
 
@@ -185,10 +427,10 @@ export function WorkoutRunner({
         <div
           role="timer"
           aria-live="polite"
-          className="rounded-xl bg-noite text-osso p-4 sm:p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-4"
+          className="sticky top-16 z-20 rounded-xl bg-noite text-osso p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-lg border border-lima/30"
         >
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-lg bg-white/10 text-lima flex items-center justify-center">
+            <div className="w-10 h-10 rounded-lg bg-white/10 text-lima flex items-center justify-center shrink-0">
               <Timer size={20} />
             </div>
             <div>
@@ -225,52 +467,106 @@ export function WorkoutRunner({
         </div>
       )}
 
-      {/* Blocos Tabulares de Exercícios */}
+      {/* Movimentos Prescritos com Séries Reais Editáveis */}
       <div className="flex flex-col gap-3">
         <span className="t-label">Movimentos Prescritos</span>
-        {sampleExercises.map((ex, exIndex) => (
+        {normalizedExercises.map((ex, exIndex) => (
           <div
-            key={ex.id}
+            key={ex.sessionExerciseId ?? ex.id}
             className="rounded-xl border border-line p-4 bg-foreground/[0.02] flex flex-col gap-3"
           >
             <div className="flex justify-between items-start gap-2">
-              <div className="flex items-center gap-2.5">
-                <span className="t-data text-xs px-2 py-0.5 rounded bg-surface border border-line text-accent-text">
+              <div className="flex items-center gap-2.5 min-w-0">
+                <span className="t-data text-xs px-2 py-0.5 rounded bg-surface border border-line text-accent-text shrink-0">
                   {String(exIndex + 1).padStart(2, "0")}
                 </span>
-                <div>
+                <div className="min-w-0">
                   <p className="font-semibold text-sm text-foreground">
-                    {ex.namePt || ex.nameEn}
+                    <ExerciseLink
+                      exerciseId={ex.id}
+                      className="inline-flex items-center gap-1.5"
+                    >
+                      <span>{ex.namePt || ex.nameEn}</span>
+                      <Info size={13} className="text-muted shrink-0" />
+                    </ExerciseLink>
                   </p>
                   <p className="t-aux text-muted">
-                    {ex.secondaryMuscles?.[0] || "Musculação"} · 90s de intervalo
+                    {ex.secondaryMuscles?.[0] || "Treinamento"} ·{" "}
+                    {ex.resolvedSets.length}{" "}
+                    {ex.resolvedSets.length === 1 ? "série" : "séries"}
                   </p>
                 </div>
               </div>
-              <span className="t-data text-xs text-muted">3 × 10 reps</span>
             </div>
 
-            {/* Botões de Série (44px para toque rápido na academia) */}
-            <div className="grid grid-cols-3 gap-2">
-              {[1, 2, 3].map((setNum) => {
-                const key = `${ex.id}_${setNum}`;
-                const done = Boolean(completedSets[key]);
+            {/* Grade tabular de séries reais com edição rápida de carga/reps + check 44px */}
+            <div className="flex flex-col gap-2">
+              {ex.resolvedSets.map((set) => {
+                const st = setStateMap[set.id] ?? {
+                  isCompleted: set.isCompleted,
+                  weightKg: set.weightKg ?? 0,
+                  reps: set.reps ?? 10,
+                };
                 return (
-                  <button
-                    key={setNum}
-                    type="button"
-                    aria-pressed={done}
-                    onClick={() => toggleSet(key)}
-                    className={`h-11 rounded-lg border text-xs font-mono flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
-                      done
-                        ? "bg-lima border-lima text-grafite font-semibold shadow-2xs"
-                        : "border-line bg-surface text-muted hover:text-foreground hover:border-mineral"
+                  <div
+                    key={set.id}
+                    className={`grid grid-cols-12 items-center gap-2 rounded-lg border px-2.5 py-1.5 transition-colors ${
+                      st.isCompleted
+                        ? "border-lima/70 bg-lima/10"
+                        : "border-line bg-surface"
                     }`}
                   >
-                    <span>S{setNum}</span>
-                    <span className="opacity-75">· 10r</span>
-                    {done && <Check size={14} strokeWidth={2.5} />}
-                  </button>
+                    <span className="col-span-2 t-data text-xs font-semibold text-muted">
+                      S{set.setNumber}
+                    </span>
+
+                    <div className="col-span-4 flex items-center gap-1">
+                      <input
+                        type="number"
+                        min={0}
+                        step={0.5}
+                        value={st.weightKg}
+                        onChange={(e) =>
+                          updateSetField(set.id, "weightKg", e.target.value)
+                        }
+                        aria-label={`Carga da série ${set.setNumber} em kg`}
+                        className="w-full h-9 px-2 rounded-md border border-line bg-background text-foreground t-data text-xs text-center focus:outline-none focus:border-profundo"
+                      />
+                      <span className="text-[11px] font-mono text-muted">kg</span>
+                    </div>
+
+                    <div className="col-span-3 flex items-center gap-1">
+                      <input
+                        type="number"
+                        min={1}
+                        value={st.reps}
+                        onChange={(e) =>
+                          updateSetField(set.id, "reps", e.target.value)
+                        }
+                        aria-label={`Repetições da série ${set.setNumber}`}
+                        className="w-full h-9 px-2 rounded-md border border-line bg-background text-foreground t-data text-xs text-center focus:outline-none focus:border-profundo"
+                      />
+                      <span className="text-[11px] font-mono text-muted">r</span>
+                    </div>
+
+                    <div className="col-span-3 flex justify-end">
+                      <button
+                        type="button"
+                        aria-pressed={st.isCompleted}
+                        onClick={() => toggleSet(set.id)}
+                        className={`h-11 w-full rounded-lg border text-xs font-mono flex items-center justify-center gap-1 transition-all cursor-pointer ${
+                          st.isCompleted
+                            ? "bg-lima border-lima text-grafite font-semibold"
+                            : "border-line bg-background text-muted hover:text-foreground hover:border-mineral"
+                        }`}
+                      >
+                        <Check size={14} strokeWidth={2.5} />
+                        <span className="hidden sm:inline">
+                          {st.isCompleted ? "Feita" : "OK"}
+                        </span>
+                      </button>
+                    </div>
+                  </div>
                 );
               })}
             </div>
@@ -278,7 +574,7 @@ export function WorkoutRunner({
         ))}
       </div>
 
-      {/* Percepção Subjetiva de Esforço (RPE) + Finalização */}
+      {/* RPE + Finalização */}
       <div className="pt-4 border-t border-line flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div className="flex flex-col gap-1.5">
           <span className="t-label">Esforço percebido da sessão (RPE)</span>
@@ -289,7 +585,7 @@ export function WorkoutRunner({
                 type="button"
                 onClick={() => setSessionRpe(rpeValue)}
                 aria-pressed={sessionRpe === rpeValue}
-                className={`h-9 w-10 rounded-md border t-data text-xs transition-colors cursor-pointer ${
+                className={`h-10 w-10 rounded-md border t-data text-xs transition-colors cursor-pointer ${
                   sessionRpe === rpeValue
                     ? "bg-foreground text-background border-foreground font-semibold"
                     : "border-line bg-surface text-muted hover:text-foreground"

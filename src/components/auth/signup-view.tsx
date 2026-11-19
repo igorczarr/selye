@@ -7,11 +7,10 @@ import { clerkAppearance } from "@/components/auth/clerk-appearance";
 export function SignUpView() {
   return (
     <AuthShell
-      eyebrow="Comece agora"
-      title="Criar sua conta"
-      description="Leva menos de um minuto. Organize, registre e acompanhe sua evolução."
-      quote="O desenvolvimento físico não acontece em saltos repentinos, mas na constância silenciosa dos dias comuns."
-      quoteAuthor="Selye · Editorial"
+      mode="signup"
+      eyebrow="Nova Conta"
+      title="Comece sua jornada"
+      description="Crie sua conta em segundos para organizar fichas e acompanhar sua evolução."
     >
       <SignUp
         routing="path"

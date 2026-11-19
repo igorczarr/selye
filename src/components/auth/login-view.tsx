@@ -7,11 +7,10 @@ import { clerkAppearance } from "@/components/auth/clerk-appearance";
 export function LoginView() {
   return (
     <AuthShell
-      eyebrow="Bem-vindo de volta"
+      mode="login"
+      eyebrow="Acesso Seguro"
       title="Entrar no Selye"
-      description="Acesse seus treinos, sua consistência e seu histórico."
-      quote="O estresse não é necessariamente um mal. É o estímulo que molda a capacidade do organismo de resistir, adaptar-se e evoluir."
-      quoteAuthor="Hans Selye · Síndrome Geral de Adaptação"
+      description="Seu painel de treinos, evolução e comunidade em um só lugar."
     >
       <SignIn
         routing="path"

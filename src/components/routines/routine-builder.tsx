@@ -3,6 +3,13 @@
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { createRoutine } from "@/actions/routines";
+import { ExerciseLink } from "@/components/catalog/exercise-link";
+import { useExerciseSheet } from "@/components/catalog/exercise-sheet";
+import { WEEKDAYS_MONDAY_FIRST } from "@/lib/week";
+import {
+  estimateRoutineDurationMinutes,
+  countTotalSets,
+} from "@/lib/routine-metrics";
 import {
   Plus,
   Trash2,
@@ -11,6 +18,8 @@ import {
   Dumbbell,
   Search,
   AlertCircle,
+  Info,
+  Clock,
 } from "lucide-react";
 
 interface ExerciseOption {
@@ -44,11 +53,13 @@ export function RoutineBuilder({
   availableExercises: ExerciseOption[];
 }) {
   const router = useRouter();
+  const { open: openExerciseSheet } = useExerciseSheet();
   const [isPending, startTransition] = useTransition();
 
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [modalityCode, setModalityCode] = useState("strength");
+  const [dayOfWeek, setDayOfWeek] = useState<number | null>(null);
   const [selectedItems, setSelectedItems] = useState<RoutineItem[]>([]);
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedExerciseId, setSelectedExerciseId] = useState(
@@ -130,6 +141,7 @@ export function RoutineBuilder({
         title: title.trim(),
         description: description.trim(),
         modalityCode,
+        dayOfWeek,
         exercises: selectedItems.map((item, idx) => ({
           exerciseId: item.exerciseId,
           orderIndex: idx + 1,
@@ -189,10 +201,50 @@ export function RoutineBuilder({
               className="input h-11 text-sm"
             >
               <option value="strength">Musculação</option>
+              <option value="beach_volleyball">Vôlei de Praia</option>
               <option value="calisthenics">Calistenia</option>
               <option value="functional">Funcional</option>
               <option value="running">Corrida</option>
             </select>
+          </div>
+        </div>
+
+        {/* Dia da Semana (Segunda → Domingo) */}
+        <div className="flex flex-col gap-1.5">
+          <span className="t-aux text-foreground font-semibold">
+            Dia da Semana (Opcional · Seg → Dom)
+          </span>
+          <div className="flex flex-wrap gap-1.5">
+            <button
+              type="button"
+              onClick={() => setDayOfWeek(null)}
+              aria-pressed={dayOfWeek === null}
+              className={`h-9 px-3 rounded-lg border text-xs font-mono transition-colors cursor-pointer ${
+                dayOfWeek === null
+                  ? "bg-foreground text-background border-foreground font-semibold"
+                  : "border-line bg-surface text-muted hover:text-foreground"
+              }`}
+            >
+              Flexível
+            </button>
+            {WEEKDAYS_MONDAY_FIRST.map((day) => {
+              const selected = dayOfWeek === day.jsDay;
+              return (
+                <button
+                  key={day.shortPt}
+                  type="button"
+                  onClick={() => setDayOfWeek(day.jsDay)}
+                  aria-pressed={selected}
+                  className={`h-9 px-3 rounded-lg border text-xs font-mono transition-colors cursor-pointer ${
+                    selected
+                      ? "bg-lima text-grafite border-lima font-semibold"
+                      : "border-line bg-surface text-muted hover:text-foreground"
+                  }`}
+                >
+                  {day.shortPt}
+                </button>
+              );
+            })}
           </div>
         </div>
 
@@ -218,10 +270,21 @@ export function RoutineBuilder({
             <span className="t-label">Prescrição de Movimentos</span>
             <h2 className="t-h2 mt-1">Exercícios da Sessão</h2>
           </div>
-          <span className="t-data text-xs text-muted">
-            {selectedItems.length}{" "}
-            {selectedItems.length === 1 ? "movimento prescrito" : "movimentos prescritos"}
-          </span>
+          <div className="flex items-center gap-3">
+            {selectedItems.length > 0 && (
+              <span className="chip text-xs font-mono">
+                <Clock size={12} />~
+                {estimateRoutineDurationMinutes(selectedItems)} min ·{" "}
+                {countTotalSets(selectedItems)} séries
+              </span>
+            )}
+            <span className="t-data text-xs text-muted">
+              {selectedItems.length}{" "}
+              {selectedItems.length === 1
+                ? "movimento prescrito"
+                : "movimentos prescritos"}
+            </span>
+          </div>
         </div>
 
         {/* Barra de busca + seletor rápido */}
@@ -271,12 +334,22 @@ export function RoutineBuilder({
             </select>
           </div>
 
-          <div className="sm:col-span-2">
+          <div className="sm:col-span-2 flex gap-1.5">
+            <button
+              type="button"
+              disabled={!selectedExerciseId || filteredCatalog.length === 0}
+              onClick={() => openExerciseSheet(selectedExerciseId)}
+              aria-label="Ver ficha técnica do exercício selecionado"
+              title="Ver passo a passo e vídeo"
+              className="btn btn-ghost h-10 w-10 p-0 shrink-0"
+            >
+              <Info size={16} />
+            </button>
             <button
               type="button"
               disabled={!selectedExerciseId || filteredCatalog.length === 0}
               onClick={() => addExerciseById(selectedExerciseId)}
-              className="btn btn-primary w-full h-10 text-xs"
+              className="btn btn-primary flex-1 h-10 text-xs"
             >
               <Plus size={16} />
               <span>Inserir</span>
@@ -306,7 +379,9 @@ export function RoutineBuilder({
                     </span>
                     <div>
                       <h3 className="font-semibold text-sm text-foreground">
-                        {item.exerciseName}
+                        <ExerciseLink exerciseId={item.exerciseId}>
+                          {item.exerciseName}
+                        </ExerciseLink>
                       </h3>
                       <span className="t-aux text-muted">
                         {item.muscleGroup} · {SET_TYPE_LABELS[item.setType] || item.setType}

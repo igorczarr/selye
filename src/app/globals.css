@@ -1,6 +1,6 @@
 @import "tailwindcss";
 
-/* SELYE — Manual de Identidade Visual v1.0 (tokens) */
+/* SELYE — Manual de Identidade Visual v2.0 (Quiet Precision Tokens) */
 :root {
   --grafite: #202a27;
   --noite: #151c1a;
@@ -16,19 +16,37 @@
   --background: var(--osso);
   --foreground: var(--grafite);
   --surface: var(--branco);
+  --surface-1: var(--osso);
+  --surface-2: var(--branco);
+  --surface-3: rgba(255, 255, 255, 0.88);
   --muted: var(--texto-2);
   --accent-text: var(--profundo);
   --border: var(--borda);
+
+  --shadow-sm: 0 1px 2px rgb(21 28 26 / 0.04);
+  --shadow-md: 0 8px 24px -12px rgb(21 28 26 / 0.14);
+  --shadow-pill: 0 12px 32px -8px rgb(21 28 26 / 0.22), 0 2px 6px rgb(21 28 26 / 0.08);
+
+  --ease-out-expo: cubic-bezier(0.16, 1, 0.3, 1);
+  --duration-fast: 150ms;
+  --duration-normal: 220ms;
 }
 
-/* Tema escuro: base Noite, texto Osso, secundário Névoa */
+/* Tema escuro: base Noite, superfície Grafite, texto Osso, secundário Névoa */
 [data-theme="dark"] {
   --background: var(--noite);
   --foreground: var(--osso);
   --surface: var(--grafite);
+  --surface-1: var(--noite);
+  --surface-2: var(--grafite);
+  --surface-3: rgba(32, 42, 39, 0.88);
   --muted: var(--nevoa);
-  --accent-text: var(--mineral);
+  --accent-text: var(--lima);
   --border: #2c3733;
+
+  --shadow-sm: 0 1px 2px rgb(0 0 0 / 0.28);
+  --shadow-md: 0 10px 28px -12px rgb(0 0 0 / 0.5);
+  --shadow-pill: 0 14px 36px -8px rgb(0 0 0 / 0.65), 0 2px 8px rgb(0 0 0 / 0.35);
 }
 
 @theme inline {
@@ -42,6 +60,9 @@
   --color-background: var(--background);
   --color-foreground: var(--foreground);
   --color-surface: var(--surface);
+  --color-surface-1: var(--surface-1);
+  --color-surface-2: var(--surface-2);
+  --color-surface-3: var(--surface-3);
   --color-muted: var(--muted);
   --color-accent-text: var(--accent-text);
   --color-line: var(--border);
@@ -50,7 +71,20 @@
   --radius-sm: 6px;
   --radius-md: 10px;
   --radius-lg: 14px;
-  --spacing: 8px; /* grid de 8 px */
+  --radius-xl: 20px;
+  --radius-pill: 9999px;
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html {
+  scroll-behavior: smooth;
+  max-width: 100%;
+  overflow-x: clip;
 }
 
 body {
@@ -60,13 +94,39 @@ body {
   font-size: 15px;
   line-height: 22px;
   font-weight: 400;
+  max-width: 100%;
+  overflow-x: clip;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
 
-/* Hierarquia de interface (manual §05) */
-.t-h1 { font-size: 28px; line-height: 34px; font-weight: 600; }
-.t-h2 { font-size: 22px; line-height: 28px; font-weight: 600; }
-.t-h3 { font-size: 18px; line-height: 24px; font-weight: 600; }
-.t-aux { font-size: 12px; line-height: 16px; font-weight: 500; }
+/* Hierarquia tipográfica fluida (Quiet Precision) */
+.t-h1 {
+  font-size: clamp(1.5rem, 1.25rem + 0.9vw, 1.875rem);
+  line-height: 1.2;
+  font-weight: 600;
+  letter-spacing: -0.022em;
+  text-wrap: balance;
+}
+.t-h2 {
+  font-size: clamp(1.1875rem, 1.08rem + 0.45vw, 1.375rem);
+  line-height: 1.27;
+  font-weight: 600;
+  letter-spacing: -0.015em;
+  text-wrap: balance;
+}
+.t-h3 {
+  font-size: clamp(1.025rem, 0.96rem + 0.25vw, 1.125rem);
+  line-height: 1.33;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  text-wrap: balance;
+}
+.t-aux {
+  font-size: 12px;
+  line-height: 16px;
+  font-weight: 500;
+}
 /* Dados e metadados: IBM Plex Mono, números tabulares */
 .t-data {
   font-family: var(--font-mono);
@@ -87,23 +147,48 @@ body {
   outline-offset: 2px;
   border-radius: 4px;
 }
-[data-theme="dark"] :focus-visible { outline-color: var(--lima); }
+[data-theme="dark"] :focus-visible {
+  outline-color: var(--lima);
+}
 
-html { scroll-behavior: smooth; }
-::selection { background: var(--lima); color: var(--grafite); }
+::selection {
+  background: var(--lima);
+  color: var(--grafite);
+}
 
 /* ---------- Primitivos de UI (compatíveis com tema claro/escuro) ---------- */
 .card {
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: var(--radius-lg);
-  box-shadow: 0 1px 2px rgb(21 28 26 / 0.04);
-  transition: border-color .2s ease, box-shadow .2s ease, transform .2s ease;
+  box-shadow: var(--shadow-sm);
+  min-width: 0;
+  transition:
+    border-color var(--duration-normal) var(--ease-out-expo),
+    box-shadow var(--duration-normal) var(--ease-out-expo),
+    transform var(--duration-normal) var(--ease-out-expo);
 }
 .card-interactive:hover {
   border-color: var(--mineral);
-  box-shadow: 0 8px 24px -12px rgb(21 28 26 / 0.18);
+  box-shadow: var(--shadow-md);
   transform: translateY(-1px);
+}
+
+.bento-grid {
+  display: grid;
+  grid-template-columns: repeat(12, minmax(0, 1fr));
+  gap: 16px;
+}
+.bento-grid > * {
+  min-width: 0;
+}
+
+.no-scrollbar {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
 }
 
 .btn {

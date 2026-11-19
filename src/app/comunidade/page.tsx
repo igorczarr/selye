@@ -1,73 +1,77 @@
 import { Suspense } from "react";
-import Link from "next/link";
 import { Navbar } from "@/components/navigation/navbar";
 import { CommunityFeed } from "@/components/community/community-feed";
-import { getCommunityFeed } from "@/actions/community";
-import { Users, UserPlus, Trophy } from "lucide-react";
+import {
+  getCommunityHubData,
+  type CommunityFilter,
+} from "@/actions/community";
 
 export const instant = false;
+
+const VALID_FILTERS = new Set<CommunityFilter>([
+  "explore",
+  "following",
+  "teams",
+  "threads",
+]);
 
 async function FeedLoader({
   searchParams,
 }: {
-  searchParams: Promise<{ tab?: "explore" | "teams" | "following" }>;
+  searchParams: Promise<{ tab?: string }>;
 }) {
   const resolved = await searchParams;
-  const tab = resolved.tab || "explore";
-  const posts = await getCommunityFeed(tab);
-  return <CommunityFeed posts={posts} activeTab={tab} />;
+  const rawTab = resolved.tab as CommunityFilter | undefined;
+  const tab: CommunityFilter =
+    rawTab && VALID_FILTERS.has(rawTab) ? rawTab : "explore";
+
+  const hub = await getCommunityHubData({ filter: tab });
+
+  return (
+    <CommunityFeed
+      posts={hub.posts}
+      activeTab={tab}
+      trendingTags={hub.trendingTags}
+      userTeams={hub.userTeams}
+      recentWorkouts={hub.recentWorkouts}
+      activeChallenges={hub.activeChallenges}
+    />
+  );
 }
 
 function CommunitySkeleton() {
   return (
     <div
-      className="flex flex-col gap-6 max-w-2xl mx-auto w-full"
+      className="grid grid-cols-1 lg:grid-cols-12 gap-6"
       aria-busy="true"
       aria-label="Carregando mural esportivo"
     >
-      <div className="skeleton h-12 w-full" />
-      <div className="skeleton h-32 w-full" />
-      <div className="skeleton h-52 w-full" />
-      <div className="skeleton h-52 w-full" />
+      <div className="lg:col-span-8 flex flex-col gap-4">
+        <div className="skeleton h-12 w-full" />
+        <div className="skeleton h-36 w-full" />
+        <div className="skeleton h-52 w-full" />
+      </div>
+      <div className="lg:col-span-4 flex flex-col gap-4">
+        <div className="skeleton h-36 w-full" />
+        <div className="skeleton h-44 w-full" />
+      </div>
     </div>
   );
 }
 
 export default function ComunidadePage(props: {
-  searchParams: Promise<{ tab?: "explore" | "teams" | "following" }>;
+  searchParams: Promise<{ tab?: string }>;
 }) {
   return (
-    <div className="min-h-screen bg-background text-foreground flex flex-col pb-20 md:pb-0">
+    <div className="min-h-screen bg-background text-foreground flex flex-col pb-24">
       <Navbar />
-      <main className="max-w-4xl mx-auto px-4 sm:px-6 py-8 flex-1 w-full">
-        <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4 mb-6">
-          <div>
-            <span className="t-label">Rede Esportiva</span>
-            <h1 className="t-h1 mt-1">Mural da Comunidade</h1>
-            <p className="text-muted text-sm mt-1">
-              Acompanhe sessões concluídas, aprendizados técnicos e a constância de outros atletas.
-            </p>
-          </div>
-          <div className="flex flex-wrap gap-2 shrink-0">
-            <Link
-              href="/comunidade/atletas"
-              className="btn btn-ghost h-10 px-3.5 text-xs"
-            >
-              <UserPlus size={14} />
-              <span>Atletas</span>
-            </Link>
-            <Link
-              href="/comunidade/desafios"
-              className="btn btn-ghost h-10 px-3.5 text-xs"
-            >
-              <Trophy size={14} />
-              <span>Desafios</span>
-            </Link>
-            <Link href="/equipes" className="btn btn-dark h-10 px-3.5 text-xs">
-              <Users size={14} />
-              <span>Equipes</span>
-            </Link>
-          </div>
+      <main className="max-w-5xl mx-auto px-4 sm:px-6 py-6 flex-1 w-full">
+        <div className="mb-6">
+          <span className="t-label">Rede Esportiva</span>
+          <h1 className="t-h1 mt-1">Comunidade</h1>
+          <p className="text-muted text-sm mt-1">
+            Check-ins de treino, fios de discussão por grupo, #hashtags e desafios coletivos.
+          </p>
         </div>
 
         <Suspense fallback={<CommunitySkeleton />}>

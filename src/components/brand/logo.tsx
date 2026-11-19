@@ -17,13 +17,13 @@ const LIMA = "#C7D977";
 
 /** Símbolo: trajetória em S + ponto de registro (lima fixo). Mínimo 24 px. */
 export function SelyeSymbol({
-  size = 32,
+  size = 28,
   ...props
 }: { size?: number } & SVGProps<SVGSVGElement>) {
   return (
     <svg
-      viewBox="12 8 76 96"
-      width={(size * 76) / 96}
+      viewBox="12 8 78 96"
+      width={Math.round((size * 78) / 96)}
       height={size}
       role="img"
       aria-label="Selye"
@@ -45,16 +45,48 @@ export function SelyeSymbol({
   );
 }
 
-/** Logotipo horizontal preferencial (símbolo + SELYE). Mínimo 140 px de largura. */
-export function SelyeLogo({
-  height = 40,
+/** Alias semântico para o símbolo compacto da marca (28 px padrão). */
+export const SelyeMark = SelyeSymbol;
+
+/** Wordmark isolado (SELYE) sem o símbolo lateral. */
+export function SelyeWordmark({
+  height = 18,
   ...props
 }: { height?: number } & SVGProps<SVGSVGElement>) {
   return (
     <svg
-      viewBox="0 0 700 120"
+      viewBox="-2 0 304 74"
       height={height}
-      width={(height * 700) / 120}
+      width={Math.round((height * 304) / 74)}
+      role="img"
+      aria-label="Selye"
+      {...props}
+    >
+      <g
+        fill="none"
+        stroke="currentColor"
+        strokeWidth={5.8}
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      >
+        {WORD_PATHS.map((d) => (
+          <path key={d} d={d} />
+        ))}
+      </g>
+    </svg>
+  );
+}
+
+/** Logotipo horizontal oficial (símbolo + SELYE) com viewBox calibrado sem corte inferior. */
+export function SelyeLogo({
+  height = 20,
+  ...props
+}: { height?: number } & SVGProps<SVGSVGElement>) {
+  return (
+    <svg
+      viewBox="10 8 616 128"
+      height={height}
+      width={Math.round((height * 616) / 128)}
       role="img"
       aria-label="Selye"
       {...props}
@@ -65,7 +97,7 @@ export function SelyeLogo({
         strokeWidth={7.8}
         strokeLinecap="round"
         strokeLinejoin="round"
-        transform="translate(0 4) scale(1)"
+        transform="translate(0 16)"
       >
         {SYMBOL_PATHS.map((d) => (
           <path key={d} d={d} />
@@ -78,7 +110,7 @@ export function SelyeLogo({
         strokeWidth={5.8}
         strokeLinecap="round"
         strokeLinejoin="round"
-        transform="translate(120 18) scale(1.65)"
+        transform="translate(124 12) scale(1.65)"
       >
         {WORD_PATHS.map((d) => (
           <path key={d} d={d} />

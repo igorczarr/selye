@@ -4,6 +4,7 @@ import { db } from "@/db";
 import * as schema from "@/db/schema";
 import { eq, desc, and, gte } from "drizzle-orm";
 import { getOrCreateDemoUser } from "./workout";
+import { getWeekdayLabelPt } from "@/lib/week";
 import {
   calculateSessionLoad,
   aggregateDailyLoads,
@@ -100,9 +101,8 @@ export async function getPerformanceOverview() {
     completedDaysThisWeek: last7DaysSessions.length,
   });
 
-  // 4. Histórico dos últimos 7 dias para visualização diária
+  // 4. Histórico dos últimos 7 dias para visualização diária (ordem cronológica: mais antigo → hoje)
   const last7DaysChart: { date: string; dayName: string; load: number }[] = [];
-  const dayNames = ["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"];
 
   for (let i = 6; i >= 0; i--) {
     const d = new Date(now);
@@ -110,7 +110,7 @@ export async function getPerformanceOverview() {
     const dateKey = d.toISOString().split("T")[0];
     last7DaysChart.push({
       date: dateKey,
-      dayName: dayNames[d.getDay()],
+      dayName: getWeekdayLabelPt(d, "short"),
       load: dailyLoads.get(dateKey) || 0,
     });
   }
