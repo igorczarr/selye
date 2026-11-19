@@ -30,45 +30,45 @@ export function generatePerformanceRecommendations(
 ): PerformanceRecommendation[] {
   const recommendations: PerformanceRecommendation[] = [];
 
-  // Regra 1: Pico Agudo Desproporcional (ACWR > 1.50)
+  // Regra 1: Pico de Esforço Recente (ACWR > 1.50)
   if (ctx.acwrResult.acwr > 1.5) {
     recommendations.push({
       id: "rec_danger_zone_acwr",
       type: "recovery",
       urgency: "alert",
-      title: "Pico de Carga Aguda Detectado",
+      title: "Pico de Esforço Recente · Priorize Recuperação",
       message:
-        "Sua demanda física nos últimos 7 dias cresceu consideravelmente acima do seu histórico dos últimos 28 dias. Priorize uma sessão de recuperação ativa ou descanso.",
-      scientificRationale: `Sua razão de carga aguda para crônica (ACWR) calculada é de ${ctx.acwrResult.acwr}. A literatura científica em fisiologia do exercício (Gabbett, 2016) aponta que índices acima de 1.5 multiplicam significativamente a suscetibilidade a lesões por sobrecarga e fadiga neuromuscular acumulada.`,
-      actionableStep: "Opte por uma caminhada leve, sessão de mobilidade articular ou descanso total nas próximas 24 horas.",
+        "Sua demanda física nos últimos 7 dias ficou significativamente acima da sua média de 28 dias. Equilibre a semana com sono, hidratação ou sessão regenerativa.",
+      scientificRationale: `Sua tendência de carga aguda vs. crônica (ACWR) é de ${ctx.acwrResult.acwr}. A literatura de monitoramento de carga (Foster; Gabbett, 2016; Impellizzeri et al., 2020) utiliza esta razão como indicador contextual de variação abrupta de volume/intensidade para calibrar o descanso entre estímulos.`,
+      actionableStep: "Opte por uma sessão regenerativa, mobilidade articular ou descanso ativo nas próximas 24 horas.",
     });
   }
 
-  // Regra 2: Alerta de Carga Acelerada (1.30 < ACWR <= 1.50)
+  // Regra 2: Semana Forte · Progressão (1.30 < ACWR <= 1.50)
   else if (ctx.acwrResult.acwr > 1.3) {
     recommendations.push({
       id: "rec_elevated_risk_acwr",
       type: "deload",
       urgency: "warning",
-      title: "Progressão de Carga em Ritmo Acelerado",
+      title: "Semana Forte · Progressão Ativa",
       message:
-        "Você está evoluindo sua intensidade de forma rápida. Para consolidar essa adaptação sem estagnação, assegure pausas estratégicas.",
-      scientificRationale: `Seu ACWR atual é de ${ctx.acwrResult.acwr}, logo acima da faixa ótima (0.8 a 1.3). Uma elevação controlada gera ganhos esportivos, contudo requer atenção redobrada à qualidade do sono e tempo de intervalo entre treinos intensos.`,
-      actionableStep: "Mantenha o treino programado, mas evite séries até a falha muscular concêntrica hoje.",
+        "Você elevou sua carga semanal acima da média habitual. Para consolidar essa adaptação com qualidade, garanta boas janelas de recuperação.",
+      scientificRationale: `Sua razão 7d/28d atual é de ${ctx.acwrResult.acwr}, logo acima da faixa de estabilidade (0.8 a 1.3). Uma progressão controlada estimula supercompensação, desde que acompanhada de sono e nutrição adequados.`,
+      actionableStep: "Mantenha o treino programado controlando a margem de repetições em reserva (RIR 1–2).",
     });
   }
 
-  // Regra 3: Sub-treinamento ou Carga Decrescente (ACWR < 0.80)
+  // Regra 3: Semana Leve · Recuperação ou Retomada (ACWR < 0.80)
   else if (ctx.acwrResult.acwr < 0.8 && ctx.acwrResult.chronicLoad > 0) {
     recommendations.push({
       id: "rec_under_training_acwr",
       type: "progressive_overload",
       urgency: "info",
-      title: "Oportunidade de Retomada Gradual",
+      title: "Semana Leve · Janela de Recuperação e Prontidão",
       message:
-        "Sua carga aguda recente está abaixo da capacidade desenvolvida nos últimos 28 dias. Uma retomada progressiva restabelecerá seu condicionamento.",
-      scientificRationale: `Com ACWR em ${ctx.acwrResult.acwr}, seu corpo assimilou os estímulos anteriores e dispõe de prontidão biológica para novos estímulos de força ou endurance, sem necessidade de saltos súbitos de carga.`,
-      actionableStep: "Retome sua rotina habitual mantendo o controle de cargas registradas.",
+        "Sua carga dos últimos 7 dias está mais leve que sua média de 28 dias — excelente para assimilar blocos intensos ou retomar o ritmo gradualmente.",
+      scientificRationale: `Com razão 7d/28d em ${ctx.acwrResult.acwr}, seu organismo reduziu a fadiga residual acumulada e dispõe de reserva adaptativa para a próxima sessão de força, quadra ou corrida.`,
+      actionableStep: "Aproveite a prontidão para executar sua próxima ficha com técnica limpa e progressão gradual.",
     });
   }
 

@@ -5,11 +5,14 @@ import * as schema from "@/db/schema";
 import { eq, desc, and } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { getOrCreateDemoUser } from "./workout";
+import { dispatchSmartNotification } from "./notifications";
 import {
   isDuplicateActivity,
   type ExistingActivity,
   type IncomingExternalActivity,
 } from "@/core/integrations/dedupe";
+import { parseActivityFileContent } from "@/core/integrations/activity-file-parser";
+import { calculateUnifiedSessionLoad } from "@/core/performance/training-load";
 
 export interface IntegrationStatus {
   provider: "strava" | "apple_health" | "health_connect" | "garmin";
@@ -180,4 +183,260 @@ export async function syncExternalActivities(
     isDuplicate: false,
     syncedActivityId: sampleIncoming.externalActivityId,
   };
+}
+
+/**
+ * Importa arquivo real de atividade esportiva (.GPX, .TCX, .CSV, .JSON) com deduplicação automática
+ * e conversão imediata em Energia Adaptativa (EA) — §Fase 15.
+ */
+export async function importExternalActivityFile(input: {
+  fileName: string;
+  content: string;
+  provider?: "strava" | "apple_health" | "health_connect" | "garmin";
+}) {
+  const user = await getOrCreateDemoUser();
+  const provider = input.provider || "strava";
+
+  const parsedList = parseActivityFileContent(input.content, input.fileName);
+  if (parsedList.length === 0) {
+    throw new Error(
+      "Não foi possível extrair atividades deste arquivo. Utilize formatos .GPX, .TCX, .CSV ou .JSON."
+    );
+  }
+
+  const existingRecords = await db
+    .select({
+      id: schema.activityEvents.id,
+      externalActivityId: schema.activityEvents.externalActivityId,
+      source: schema.activityEvents.source,
+      startedAt: schema.activityEvents.createdAt,
+      durationMinutes: schema.activityEvents.durationMinutes,
+    })
+    .from(schema.activityEvents)
+    .where(eq(schema.activityEvents.userId, user.id));
+
+  const existingFormatted: ExistingActivity[] = existingRecords.map((r) => ({
+    id: r.id,
+    externalActivityId: r.externalActivityId,
+    source: r.source,
+    startedAt: r.startedAt.toISOString(),
+    durationMinutes: r.durationMinutes,
+  }));
+
+  let importedCount = 0;
+  let skippedDuplicatesCount = 0;
+  let totalEaAdded = 0;
+  const importedTitles: string[] = [];
+
+  for (const act of parsedList) {
+    const incoming: IncomingExternalActivity = {
+      externalActivityId: act.externalId,
+      source: provider,
+      startedAt: act.startedAtIso,
+      durationMinutes: act.durationMinutes,
+      sportCode: act.modalityCode,
+    };
+
+    const dedupe = isDuplicateActivity(incoming, existingFormatted);
+    if (dedupe.isDuplicate) {
+      skippedDuplicatesCount++;
+      continue;
+    }
+
+    const startedAt = new Date(act.startedAtIso);
+    const finishedAt = new Date(
+      startedAt.getTime() + act.durationMinutes * 60_000
+    );
+    const clientSessionId = `import_${act.externalId}_${Date.now()}_${Math.random()
+      .toString(36)
+      .substring(2, 7)}`;
+
+    const [session] = await db
+      .insert(schema.workoutSessions)
+      .values({
+        userId: user.id,
+        title: act.title,
+        modalityCode: act.modalityCode,
+        status: "completed",
+        startedAt,
+        finishedAt,
+        rpeSession: act.estimatedRpe,
+        notes: `Importado via ${input.fileName} (${act.sourceFormat.toUpperCase()})`,
+        clientSessionId,
+        timezone: "America/Sao_Paulo",
+      })
+      .returning();
+
+    await db.insert(schema.activityEvents).values({
+      userId: user.id,
+      sessionId: session.id,
+      source: provider,
+      externalActivityId: act.externalId,
+      localDate: act.localDate,
+      durationMinutes: act.durationMinutes,
+      countsForStreak: true,
+    });
+
+    if (act.distanceKm && act.distanceKm > 0) {
+      await db.insert(schema.sessionMetrics).values({
+        sessionId: session.id,
+        metricKey: "distance_km",
+        metricValue: act.distanceKm,
+        unit: "km",
+      });
+    }
+
+    if (act.avgHeartRateBpm && act.avgHeartRateBpm > 0) {
+      await db.insert(schema.sessionMetrics).values({
+        sessionId: session.id,
+        metricKey: "avg_hr_bpm",
+        metricValue: act.avgHeartRateBpm,
+        unit: "bpm",
+      });
+    }
+
+    const loadEa = calculateUnifiedSessionLoad({
+      durationMinutes: act.durationMinutes,
+      rpe: act.estimatedRpe,
+      modalityCode: act.modalityCode,
+      distanceKm: act.distanceKm,
+    });
+
+    totalEaAdded += loadEa;
+    importedCount++;
+    importedTitles.push(
+      `${act.title} (${act.durationMinutes} min${
+        act.distanceKm ? ` · ${act.distanceKm} km` : ""
+      } · -${loadEa} EA)`
+    );
+
+    existingFormatted.push({
+      id: session.id,
+      externalActivityId: act.externalId,
+      source: provider,
+      startedAt: act.startedAtIso,
+      durationMinutes: act.durationMinutes,
+    });
+  }
+
+  if (importedCount > 0) {
+    await dispatchSmartNotification({
+      recipientUserId: user.id,
+      eventType: "external_activities_imported",
+      params: {
+        importedCount,
+        loadEa: totalEaAdded,
+      },
+    });
+  }
+
+  revalidatePath("/");
+  revalidatePath("/evolucao");
+  revalidatePath("/integracoes");
+  revalidatePath("/comunidade/desafios");
+
+  return {
+    importedCount,
+    skippedDuplicatesCount,
+    totalEaAdded,
+    importedTitles,
+  };
+}
+
+/**
+ * Carrega e atualiza a Calibração Rápida do Perfil Fisiológico (< 2 min — §Fase 15)
+ * para personalizar imediatamente a Capacidade de Energia Adaptativa (EA) e a Decisão do Dia.
+ */
+export async function getBaselineCalibrationSnapshot() {
+  const user = await getOrCreateDemoUser();
+  const [profileRows, goalRows, hrRows] = await Promise.all([
+    db
+      .select()
+      .from(schema.profiles)
+      .where(eq(schema.profiles.userId, user.id))
+      .limit(1),
+    db
+      .select()
+      .from(schema.weeklyGoals)
+      .where(eq(schema.weeklyGoals.userId, user.id))
+      .limit(1),
+    db
+      .select()
+      .from(schema.bodyMetrics)
+      .where(
+        and(
+          eq(schema.bodyMetrics.userId, user.id),
+          eq(schema.bodyMetrics.metricType, "resting_hr")
+        )
+      )
+      .orderBy(desc(schema.bodyMetrics.recordedAt))
+      .limit(1),
+  ]);
+
+  return {
+    experienceLevel:
+      (profileRows[0]?.experienceLevel as
+        | "beginner"
+        | "intermediate"
+        | "advanced") || "intermediate",
+    targetDaysPerWeek: goalRows[0]?.targetDaysPerWeek || 4,
+    restingHrBpm: hrRows[0]?.valueNumeric || null,
+  };
+}
+
+export async function saveBaselineCalibration(input: {
+  experienceLevel: "beginner" | "intermediate" | "advanced";
+  targetDaysPerWeek: number;
+  restingHrBpm?: number | null;
+}) {
+  const user = await getOrCreateDemoUser();
+  const safeDays = Math.max(2, Math.min(7, Math.round(input.targetDaysPerWeek || 4)));
+
+  await db
+    .update(schema.profiles)
+    .set({
+      experienceLevel: input.experienceLevel,
+      updatedAt: new Date(),
+    })
+    .where(eq(schema.profiles.userId, user.id));
+
+  const [existingGoal] = await db
+    .select()
+    .from(schema.weeklyGoals)
+    .where(eq(schema.weeklyGoals.userId, user.id))
+    .limit(1);
+
+  if (existingGoal) {
+    await db
+      .update(schema.weeklyGoals)
+      .set({ targetDaysPerWeek: safeDays })
+      .where(eq(schema.weeklyGoals.id, existingGoal.id));
+  } else {
+    await db.insert(schema.weeklyGoals).values({
+      userId: user.id,
+      targetDaysPerWeek: safeDays,
+      effectiveFrom: new Date().toISOString().split("T")[0],
+    });
+  }
+
+  if (
+    typeof input.restingHrBpm === "number" &&
+    input.restingHrBpm >= 35 &&
+    input.restingHrBpm <= 110
+  ) {
+    await db.insert(schema.bodyMetrics).values({
+      userId: user.id,
+      metricType: "resting_hr",
+      valueNumeric: Math.round(input.restingHrBpm),
+      unit: "bpm",
+      visibility: "private",
+      source: "manual",
+    });
+  }
+
+  revalidatePath("/");
+  revalidatePath("/evolucao");
+  revalidatePath("/integracoes");
+  revalidatePath("/perfil");
+  return { ok: true };
 }

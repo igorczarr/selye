@@ -3,7 +3,7 @@
 import { useState, useTransition } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { duplicateRoutine } from "@/actions/routines";
+import { archiveRoutine, duplicateRoutine } from "@/actions/routines";
 import { startWorkout } from "@/actions/workout";
 import {
   WEEKDAYS_MONDAY_FIRST,
@@ -15,12 +15,11 @@ import {
   countTotalSets,
 } from "@/lib/routine-metrics";
 import { ExerciseLink } from "@/components/catalog/exercise-link";
+import { ModalPortal } from "@/components/ui/modal-portal";
 import {
   PlusCircle,
-  Copy,
   Play,
   Dumbbell,
-  Printer,
   Clock,
   Layers,
   LayoutGrid,
@@ -28,6 +27,10 @@ import {
   ChevronDown,
   ChevronUp,
   Info,
+  Trash2,
+  MoreVertical,
+  Pencil,
+  Copy,
 } from "lucide-react";
 
 const MODALITY_LABELS: Record<string, string> = {
@@ -73,6 +76,11 @@ export function RoutinesHub({ routines }: { routines: RoutineHubItem[] }) {
   const [selectedDay, setSelectedDay] = useState<number | "all">("all");
   const [layoutMode, setLayoutMode] = useState<"carousel" | "grid">("carousel");
   const [expandedIds, setExpandedIds] = useState<Record<string, boolean>>({});
+  const [openMenuId, setOpenMenuId] = useState<string | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<{
+    id: string;
+    title: string;
+  } | null>(null);
 
   const todayMondayIdx = jsDayToMondayIndex(new Date().getDay());
 
@@ -97,8 +105,19 @@ export function RoutinesHub({ routines }: { routines: RoutineHubItem[] }) {
   };
 
   const handleDuplicate = (routineId: string) => {
+    setOpenMenuId(null);
     startTransition(async () => {
       await duplicateRoutine(routineId);
+      router.refresh();
+    });
+  };
+
+  const handleConfirmDelete = () => {
+    if (!deleteTarget) return;
+    const targetId = deleteTarget.id;
+    startTransition(async () => {
+      await archiveRoutine(targetId);
+      setDeleteTarget(null);
       router.refresh();
     });
   };
@@ -259,7 +278,7 @@ export function RoutinesHub({ routines }: { routines: RoutineHubItem[] }) {
             className={
               layoutMode === "carousel"
                 ? "flex gap-4 px-4 sm:px-0 items-stretch"
-                : "grid grid-cols-1 md:grid-cols-2 gap-4"
+                : "grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4"
             }
           >
             {visibleRoutines.map((routine) => {
@@ -293,7 +312,7 @@ export function RoutinesHub({ routines }: { routines: RoutineHubItem[] }) {
                   } ${isToday ? "border-lima ring-1 ring-lima/50" : ""}`}
                 >
                   <div>
-                    {/* Metadados topo */}
+                    {/* Metadados topo + Menu da ficha (Editar / Duplicar / Remover) */}
                     <div className="flex items-center justify-between gap-2">
                       <div className="flex items-center gap-1.5 flex-wrap">
                         {dayLabel && (
@@ -309,9 +328,65 @@ export function RoutinesHub({ routines }: { routines: RoutineHubItem[] }) {
                         )}
                         <span className="chip text-[11px]">{modalityLabel}</span>
                       </div>
-                      <span className="t-data text-[11px] text-muted shrink-0">
-                        v{routine.version?.versionNumber || 1}.0
-                      </span>
+
+                      <div className="relative shrink-0">
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setOpenMenuId(openMenuId === routine.id ? null : routine.id)
+                          }
+                          aria-haspopup="menu"
+                          aria-expanded={openMenuId === routine.id}
+                          aria-label={`Opções da ficha ${routine.title}`}
+                          className="w-8 h-8 rounded-lg flex items-center justify-center text-muted hover:text-foreground hover:bg-foreground/5 transition-colors cursor-pointer"
+                        >
+                          <MoreVertical size={15} />
+                        </button>
+
+                        {openMenuId === routine.id && (
+                          <div
+                            role="menu"
+                            aria-label="Ações da ficha"
+                            className="absolute right-0 mt-1 w-44 rounded-xl border border-line bg-surface shadow-lg p-1 z-30 flex flex-col gap-0.5"
+                          >
+                            <Link
+                              href={`/treinos/${routine.id}/editar`}
+                              role="menuitem"
+                              onClick={() => setOpenMenuId(null)}
+                              className="px-3 py-2 rounded-lg text-xs font-medium text-foreground hover:bg-foreground/5 flex items-center gap-2 transition-colors"
+                            >
+                              <Pencil size={13} className="text-muted" />
+                              <span>Editar ficha</span>
+                            </Link>
+                            <button
+                              type="button"
+                              role="menuitem"
+                              disabled={isPending}
+                              onClick={() => handleDuplicate(routine.id)}
+                              className="px-3 py-2 rounded-lg text-xs font-medium text-foreground hover:bg-foreground/5 flex items-center gap-2 text-left transition-colors cursor-pointer"
+                            >
+                              <Copy size={13} className="text-muted" />
+                              <span>Duplicar ficha</span>
+                            </button>
+                            <button
+                              type="button"
+                              role="menuitem"
+                              disabled={isPending}
+                              onClick={() => {
+                                setOpenMenuId(null);
+                                setDeleteTarget({
+                                  id: routine.id,
+                                  title: routine.title,
+                                });
+                              }}
+                              className="px-3 py-2 rounded-lg text-xs font-medium text-red-500 hover:bg-red-500/10 flex items-center gap-2 text-left transition-colors cursor-pointer"
+                            >
+                              <Trash2 size={13} />
+                              <span>Remover ficha</span>
+                            </button>
+                          </div>
+                        )}
+                      </div>
                     </div>
 
                     {/* Título & métricas rápidas */}
@@ -384,35 +459,13 @@ export function RoutinesHub({ routines }: { routines: RoutineHubItem[] }) {
                     </div>
                   </div>
 
-                  {/* Ações do card */}
-                  <div className="pt-3.5 border-t border-line flex items-center justify-between gap-2">
-                    <div className="flex items-center gap-1.5">
-                      <button
-                        type="button"
-                        disabled={isPending}
-                        onClick={() => handleDuplicate(routine.id)}
-                        className="btn btn-ghost h-9 w-9 p-0"
-                        title="Duplicar ficha"
-                        aria-label={`Duplicar ${routine.title}`}
-                      >
-                        <Copy size={14} strokeWidth={1.75} />
-                      </button>
-
-                      <Link
-                        href={`/treinos/${routine.id}/imprimir`}
-                        className="btn btn-ghost h-9 px-2.5 text-xs font-mono"
-                        title="Imprimir folha técnica A4 ou salvar em PDF"
-                      >
-                        <Printer size={14} strokeWidth={1.75} />
-                        <span>A4</span>
-                      </Link>
-                    </div>
-
+                  {/* Ação principal do card */}
+                  <div className="pt-3.5 border-t border-line flex items-center justify-end">
                     <button
                       type="button"
                       disabled={isPending}
                       onClick={() => handleStartRoutine(routine)}
-                      className="btn btn-dark h-9 px-4 text-xs"
+                      className="btn btn-dark h-9 w-full text-xs"
                     >
                       <Play size={12} fill="currentColor" />
                       <span>{isStartingThis ? "Abrindo..." : "Treinar"}</span>
@@ -424,6 +477,38 @@ export function RoutinesHub({ routines }: { routines: RoutineHubItem[] }) {
           </div>
         </div>
       )}
+
+      {/* Modal customizado de confirmação de exclusão via ModalPortal */}
+      <ModalPortal
+        open={Boolean(deleteTarget)}
+        onClose={() => setDeleteTarget(null)}
+        ariaLabel="Confirmar exclusão de ficha"
+        maxWidthClass="max-w-sm"
+      >
+        <div className="card p-6 w-full bg-surface border border-line shadow-2xl flex flex-col gap-4">
+          <h3 className="t-h3">Excluir esta ficha?</h3>
+          <p className="text-xs text-muted leading-relaxed">
+            A ficha <strong className="text-foreground">{deleteTarget?.title}</strong> será removida da sua lista ativa. Seu histórico de treinos já concluídos permanece intacto.
+          </p>
+          <div className="flex justify-end gap-2">
+            <button
+              type="button"
+              onClick={() => setDeleteTarget(null)}
+              className="btn btn-ghost h-9 px-3 text-xs"
+            >
+              Cancelar
+            </button>
+            <button
+              type="button"
+              disabled={isPending}
+              onClick={handleConfirmDelete}
+              className="btn btn-dark h-9 px-4 text-xs"
+            >
+              {isPending ? "Excluindo..." : "Excluir Ficha"}
+            </button>
+          </div>
+        </div>
+      </ModalPortal>
     </div>
   );
 }

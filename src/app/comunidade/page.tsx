@@ -65,7 +65,7 @@ export default function ComunidadePage(props: {
   return (
     <div className="min-h-screen bg-background text-foreground flex flex-col pb-24">
       <Navbar />
-      <main className="max-w-5xl mx-auto px-4 sm:px-6 py-6 flex-1 w-full">
+      <main className="selye-container py-6 flex-1">
         <div className="mb-6">
           <span className="t-label">Rede Esportiva</span>
           <h1 className="t-h1 mt-1">Comunidade</h1>

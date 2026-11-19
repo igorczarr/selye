@@ -6,15 +6,39 @@ import { eq, desc, asc, and, gte, inArray } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { connection } from "next/server";
 import { currentUser } from "@clerk/nextjs/server";
-import { calculateWeeklyStreak } from "@/core/consistency/streak-calculator";
+import {
+  calculateWeeklyStreak,
+  getIsoWeekStart,
+} from "@/core/consistency/streak-calculator";
 import { getDailyEditorialForDate } from "@/core/editorial/daily-quotes";
 import {
   aggregateDailyLoads,
   calculateACWR,
+  calculateUnifiedSessionLoad,
+  calculateWeeklyRecoveryBudget,
+  getModalityProfile,
 } from "@/core/performance/training-load";
+import {
+  calculateSubjectiveReadinessScore,
+  evaluateDailyDecision,
+  type MorningCheckinInput,
+} from "@/core/performance/daily-decision";
+import {
+  analyzeWeeklyScheduleInterference,
+  type SchedulableRoutine,
+} from "@/core/performance/weekly-rescheduler";
+import {
+  learnAdaptiveAthleteProfile,
+  RECOVERY_ATTITUDE_MAP,
+  type RecoveryAttitudeCode,
+  type HistoricalCheckinSample,
+  type LoggedRecoveryAttitude,
+} from "@/core/ml/adaptive-athlete-engine";
 import { generatePerformanceRecommendations } from "@/core/performance/recommendations-engine";
 import { getWeekdayLabelPt } from "@/lib/week";
 import { getUserRoutines } from "./routines";
+import { dispatchSmartNotification } from "./notifications";
+import { evaluateAndUnlockAchievements } from "./achievements";
 
 const DEMO_USER_EMAIL =
   process.env.ACTIVE_USER_EMAIL || "igorsantos979.is@gmail.com";
@@ -27,12 +51,20 @@ export async function getOrCreateDemoUser() {
   }
 
   let targetEmail = DEMO_USER_EMAIL;
+  let clerkImageUrl: string | null = null;
+  let clerkFullName: string | null = null;
 
   try {
     const clerkUser = await currentUser();
     const primaryEmail = clerkUser?.emailAddresses?.[0]?.emailAddress;
     if (primaryEmail) {
       targetEmail = primaryEmail;
+    }
+    if (clerkUser?.imageUrl) {
+      clerkImageUrl = clerkUser.imageUrl;
+    }
+    if (clerkUser?.fullName || clerkUser?.firstName) {
+      clerkFullName = clerkUser.fullName || clerkUser.firstName || null;
     }
   } catch {
     // Fora de requisição HTTP (ex: testes unitários ou scripts CLI)
@@ -45,15 +77,29 @@ export async function getOrCreateDemoUser() {
     .limit(1);
 
   if (existing.length > 0) {
-    return existing[0];
+    const current = existing[0];
+    // Sincroniza avatar do Clerk automaticamente para exibir a foto de perfil
+    if (clerkImageUrl && current.avatarUrl !== clerkImageUrl) {
+      const [updated] = await db
+        .update(schema.users)
+        .set({
+          avatarUrl: clerkImageUrl,
+          updatedAt: new Date(),
+        })
+        .where(eq(schema.users.id, current.id))
+        .returning();
+      return updated || { ...current, avatarUrl: clerkImageUrl };
+    }
+    return current;
   }
 
   const [newUser] = await db
     .insert(schema.users)
     .values({
-      name: "Atleta Selye",
+      name: clerkFullName || "Atleta Selye",
       email: targetEmail,
       username: targetEmail.split("@")[0].replace(/[^a-zA-Z0-9_]/g, ""),
+      avatarUrl: clerkImageUrl,
       bio: "Atleta em jornada de evolução física no Selye.",
     })
     .returning();
@@ -118,25 +164,46 @@ export async function getDashboardData() {
 
   const recentSessions = completedSessions.slice(0, 5);
 
-  // 5. Histórico de eventos e metas para indicadores reais
-  const [activities, goals, savedStreaks] = await Promise.all([
-    db
-      .select()
-      .from(schema.activityEvents)
-      .where(eq(schema.activityEvents.userId, user.id)),
-    db
-      .select()
-      .from(schema.weeklyGoals)
-      .where(eq(schema.weeklyGoals.userId, user.id))
-      .limit(1),
-    db
-      .select()
-      .from(schema.streaks)
-      .where(eq(schema.streaks.userId, user.id))
-      .limit(1),
-  ]);
+  // 5. Histórico de eventos, metas, perfil e telemetria biométrica (check-ins, atitudes +EA e escudo semanal)
+  const [activities, goals, savedStreaks, userProfileRows, bodyMetricsRows] =
+    await Promise.all([
+      db
+        .select()
+        .from(schema.activityEvents)
+        .where(eq(schema.activityEvents.userId, user.id)),
+      db
+        .select()
+        .from(schema.weeklyGoals)
+        .where(eq(schema.weeklyGoals.userId, user.id))
+        .limit(1),
+      db
+        .select()
+        .from(schema.streaks)
+        .where(eq(schema.streaks.userId, user.id))
+        .limit(1),
+      db
+        .select()
+        .from(schema.profiles)
+        .where(eq(schema.profiles.userId, user.id))
+        .limit(1),
+      db
+        .select()
+        .from(schema.bodyMetrics)
+        .where(eq(schema.bodyMetrics.userId, user.id))
+        .orderBy(desc(schema.bodyMetrics.recordedAt))
+        .limit(60),
+    ]);
 
   const targetDaysPerWeek = goals[0]?.targetDaysPerWeek || 4;
+  const currentIsoWeekStart = getIsoWeekStart(today);
+
+  const shieldedWeeks: string[] = [];
+  for (const bm of bodyMetricsRows) {
+    if (bm.metricType === "regenerative_week_shield" && bm.valueNumeric > 0 && bm.notes) {
+      shieldedWeeks.push(bm.notes.trim());
+    }
+  }
+  const isCurrentWeekShielded = shieldedWeeks.includes(currentIsoWeekStart);
 
   // Datas únicas de treino combinando activity_events e workout_sessions concluídas
   const dateSet = new Set<string>();
@@ -163,11 +230,12 @@ export async function getDashboardData() {
   const weeklyFrequencyAvg =
     Math.round((activeDaysLast28 / 4) * 10) / 10;
 
-  // Streak semanal calculado sobre o histórico real (com fallback para registro salvo)
+  // Streak semanal calculado sobre o histórico real + semanas regenerativas protegidas (Fase 14)
   const calculatedStreak = calculateWeeklyStreak(
     uniqueDates,
     targetDaysPerWeek,
-    today
+    today,
+    shieldedWeeks
   );
   const currentWeeklyStreak = Math.max(
     calculatedStreak.current,
@@ -186,19 +254,42 @@ export async function getDashboardData() {
   const sessionsLast28Ids = sessionsLast28.map((s) => s.id);
 
   let monthlyVolumeKg = 0;
+  const volumeBySessionId = new Map<string, number>();
+  const distanceBySessionId = new Map<string, number>();
   if (sessionsLast28Ids.length > 0) {
-    const logs = await db
-      .select({
-        weightKg: schema.setLogs.weightKg,
-        reps: schema.setLogs.reps,
-      })
-      .from(schema.setLogs)
-      .where(inArray(schema.setLogs.sessionId, sessionsLast28Ids));
+    const [logs, metricsRows] = await Promise.all([
+      db
+        .select({
+          sessionId: schema.setLogs.sessionId,
+          weightKg: schema.setLogs.weightKg,
+          reps: schema.setLogs.reps,
+        })
+        .from(schema.setLogs)
+        .where(inArray(schema.setLogs.sessionId, sessionsLast28Ids)),
+      db
+        .select({
+          sessionId: schema.sessionMetrics.sessionId,
+          metricKey: schema.sessionMetrics.metricKey,
+          metricValue: schema.sessionMetrics.metricValue,
+        })
+        .from(schema.sessionMetrics)
+        .where(inArray(schema.sessionMetrics.sessionId, sessionsLast28Ids)),
+    ]);
 
-    monthlyVolumeKg = logs.reduce(
-      (sum, l) => sum + (l.weightKg || 0) * (l.reps || 0),
-      0
-    );
+    for (const l of logs) {
+      const vol = (l.weightKg || 0) * (l.reps || 0);
+      monthlyVolumeKg += vol;
+      volumeBySessionId.set(
+        l.sessionId,
+        (volumeBySessionId.get(l.sessionId) || 0) + vol
+      );
+    }
+
+    for (const m of metricsRows) {
+      if (m.metricKey === "distance_km" && m.metricValue > 0) {
+        distanceBySessionId.set(m.sessionId, m.metricValue);
+      }
+    }
   }
 
   // 6. Frase do dia editorial com contagem anual (Dia X de 365)
@@ -207,7 +298,7 @@ export async function getDashboardData() {
   // 7. Rotinas do atleta ordenadas (Dia 1 → Dia 5 / Seg → Dom)
   const routines = await getUserRoutines();
 
-  // 8. Resumo assertivo de Performance (ACWR + 7 dias + recomendação de 1 linha)
+  // 8. Resumo assertivo de Performance Multimodal (ACWR + Orçamento de Recuperação Semanal + 7 dias)
   const sessionLoadInputs = sessionsLast28.map((s) => {
     const durationMinutes = s.finishedAt
       ? Math.max(
@@ -219,11 +310,16 @@ export async function getDashboardData() {
           )
         )
       : 45;
+    const volumeKg = volumeBySessionId.get(s.id) || 0;
+    const distanceKm = distanceBySessionId.get(s.id) || 0;
     return {
+      id: s.id,
       date: new Date(s.startedAt).toISOString().split("T")[0],
       durationMinutes,
       rpe: s.rpeSession || 7,
-      modality: s.modalityCode,
+      modalityCode: s.modalityCode,
+      volumeKg,
+      distanceKm,
     };
   });
 
@@ -254,6 +350,190 @@ export async function getDashboardData() {
             10
         ) / 10
       : 7.0;
+
+  const baseRecoveryBudget = calculateWeeklyRecoveryBudget({
+    sessionsLast7Days: last7Sessions,
+    chronicDailyLoadUa: acwrResult.chronicLoad,
+    targetDaysPerWeek,
+  });
+
+  // Extrai check-ins matinais, atitudes regenerativas (+EA) e FC de repouso de body_metrics
+  let todayCheckin: MorningCheckinInput | null = null;
+  const checkinsLast28Days: HistoricalCheckinSample[] = [];
+  const recoveryAttitudesLast7Days: LoggedRecoveryAttitude[] = [];
+  let restingHrBpm: number | null = null;
+
+  for (const row of bodyMetricsRows) {
+    const recDate = new Date(row.recordedAt).toISOString().split("T")[0];
+    if (row.metricType === "resting_hr" && restingHrBpm === null) {
+      restingHrBpm = row.valueNumeric;
+    } else if (row.metricType === "morning_checkin") {
+      let parsed: any = null;
+      if (row.notes) {
+        try {
+          parsed = JSON.parse(row.notes);
+        } catch {
+          parsed = null;
+        }
+      }
+      const localDate = parsed?.localDate || recDate;
+      if (parsed && localDate >= past28Str) {
+        const sample: HistoricalCheckinSample = {
+          localDate,
+          sleepQuality: Number(parsed.sleepQuality) || 4,
+          energyLevel: Number(parsed.energyLevel) || 4,
+          muscleFreshness: Number(parsed.muscleFreshness) || 4,
+          moodLevel: Number(parsed.moodLevel) || 4,
+        };
+        checkinsLast28Days.push(sample);
+        if (localDate === today && !todayCheckin) {
+          todayCheckin = sample;
+        }
+      }
+    } else if (row.metricType === "recovery_attitude" && row.notes) {
+      try {
+        const parsed = JSON.parse(row.notes);
+        if (parsed?.code && parsed.code in RECOVERY_ATTITUDE_MAP) {
+          recoveryAttitudesLast7Days.push({
+            code: parsed.code as RecoveryAttitudeCode,
+            localDate: parsed.localDate || recDate,
+            rechargeEa: row.valueNumeric || undefined,
+          });
+        }
+      } catch {
+        // ignora
+      }
+    }
+  }
+
+  // Motor de Machine Learning Individual do Selye (calcula EA personalizada, +EA e -EA)
+  const adaptiveProfile = learnAdaptiveAthleteProfile({
+    experienceLevel: userProfileRows[0]?.experienceLevel || "intermediate",
+    targetDaysPerWeek,
+    currentWeeklyStreak,
+    restingHrBpm,
+    sessionsLast28Days: sessionLoadInputs.map((s) => ({
+      date: s.date,
+      modalityCode: s.modalityCode || "strength",
+      durationMinutes: s.durationMinutes,
+      rpe: s.rpe,
+      rawLoadEa: calculateUnifiedSessionLoad({
+        durationMinutes: s.durationMinutes,
+        rpe: s.rpe,
+        modalityCode: s.modalityCode,
+        volumeKg: s.volumeKg,
+        distanceKm: s.distanceKm,
+      }),
+    })),
+    checkinsLast28Days,
+    recoveryAttitudesLast7Days,
+    todayDateStr: today,
+  });
+
+  const recoveryBudget = {
+    ...baseRecoveryBudget,
+    weeklyBudgetTargetUa: adaptiveProfile.personalCapacityEa,
+    weeklySpentUa: adaptiveProfile.netSpentEa,
+    weeklyRemainingUa: adaptiveProfile.availableReserveEa,
+    usagePercent: adaptiveProfile.usagePercent,
+  };
+
+  const yesterdayDate = new Date(now);
+  yesterdayDate.setDate(now.getDate() - 1);
+  const yesterdayStr = yesterdayDate.toISOString().split("T")[0];
+  const yesterdayLoadUa = dailyLoads.get(yesterdayStr) || 0;
+  const yesterdaySession = sessionLoadInputs.find(
+    (s) => s.date === yesterdayStr
+  );
+  const yesterdayModalityLabel = yesterdaySession
+    ? getModalityProfile(yesterdaySession.modalityCode).labelPt
+    : null;
+
+  const dailyDecision = evaluateDailyDecision({
+    checkin: todayCheckin,
+    yesterdayLoadUa,
+    yesterdayLastModalityLabel: yesterdayModalityLabel,
+    recoveryBudgetUsagePercent: recoveryBudget.usagePercent,
+    recoveryBudgetRemainingUa: recoveryBudget.weeklyRemainingUa,
+    acwr: acwrResult.acwr,
+    consecutiveTrainingDays: consecutiveDays,
+  });
+
+  // 8.5 Reagendamento Inteligente da Semana & Detecção de Interferência (Fase 13)
+  const schedulableRoutines: SchedulableRoutine[] = routines.map((r) => {
+    const firstTemplate = r.templates?.[0];
+    const prescs = firstTemplate?.prescriptions || [];
+    return {
+      id: r.id,
+      title: r.title,
+      modalityCode: r.modalityCode,
+      dayOfWeek:
+        typeof firstTemplate?.dayOfWeek === "number"
+          ? firstTemplate.dayOfWeek
+          : null,
+      exercises: prescs.map((p: any) => ({
+        namePt: p.exerciseNamePt || "",
+        nameEn: p.exerciseNameEn || null,
+        modalityCode: r.modalityCode,
+        secondaryMuscles: p.secondaryMuscles || [],
+        targetSets: p.targetSets,
+      })),
+    };
+  });
+
+  const recentCompletedForScheduler = last7Sessions.map((s) => ({
+    id: s.id,
+    title:
+      completedSessions.find((cs) => cs.id === s.id)?.title ||
+      getModalityProfile(s.modalityCode).labelPt,
+    modalityCode: s.modalityCode || "other",
+    localDate: s.date,
+    jsDay: new Date(`${s.date}T12:00:00Z`).getUTCDay(),
+    durationMinutes: s.durationMinutes,
+    rpe: s.rpe,
+    loadUa: calculateUnifiedSessionLoad({
+      durationMinutes: s.durationMinutes,
+      rpe: s.rpe,
+      modalityCode: s.modalityCode,
+      volumeKg: s.volumeKg,
+      distanceKm: s.distanceKm,
+    }),
+  }));
+
+  const rescheduleProposals = analyzeWeeklyScheduleInterference({
+    routines: schedulableRoutines,
+    recentActivities: recentCompletedForScheduler,
+    todayDateStr: today,
+    todayJsDay: now.getDay(),
+    recoveryBudgetUsagePercent: recoveryBudget.usagePercent,
+  });
+
+  const recentSessionsEnriched = recentSessions.map((s) => {
+    const durationMinutes = s.finishedAt
+      ? Math.max(
+          15,
+          Math.round(
+            (new Date(s.finishedAt).getTime() -
+              new Date(s.startedAt).getTime()) /
+              60000
+          )
+        )
+      : 45;
+    const loadUa = calculateUnifiedSessionLoad({
+      durationMinutes,
+      rpe: s.rpeSession || 7,
+      modalityCode: s.modalityCode,
+      volumeKg: volumeBySessionId.get(s.id) || 0,
+      distanceKm: distanceBySessionId.get(s.id) || 0,
+    });
+    const modProfile = getModalityProfile(s.modalityCode);
+    return {
+      ...s,
+      durationMinutes,
+      loadUa,
+      modalityLabel: modProfile.labelPt,
+    };
+  });
 
   const recommendations = generatePerformanceRecommendations({
     acwrResult,
@@ -338,6 +618,11 @@ export async function getDashboardData() {
     routines,
     performanceSummary: {
       acwrResult,
+      recoveryBudget,
+      adaptiveProfile,
+      dailyDecision,
+      todayCheckin,
+      rescheduleProposals,
       headlineRecommendation: recommendations[0] || null,
       last7DaysChart,
       averageRpe: avgRpe,
@@ -346,7 +631,7 @@ export async function getDashboardData() {
     exerciseList,
     activeSession: activeSession || null,
     activeSessionExercises,
-    recentSessions,
+    recentSessions: recentSessionsEnriched,
     activitiesCount: Math.max(activities.length, completedSessions.length),
     stats: {
       monthlyVolumeKg: Math.round(monthlyVolumeKg),
@@ -354,6 +639,7 @@ export async function getDashboardData() {
       targetDaysPerWeek,
       currentWeeklyStreak,
       bestWeeklyStreak,
+      isCurrentWeekShielded,
       activeDaysInYear,
       activeDaysLast28,
       totalCompletedWorkouts: Math.max(
@@ -494,22 +780,46 @@ export async function finishWorkout(sessionId: string, rpe: number = 8) {
       .set({ isCompleted: true, completedAt: finishedAt })
       .where(eq(schema.setLogs.sessionId, session.id));
 
+    const durationMinutes = Math.max(
+      15,
+      Math.round(
+        (finishedAt.getTime() - new Date(session.startedAt).getTime()) / 60000
+      )
+    );
+
     await db.insert(schema.activityEvents).values({
       userId: user.id,
       sessionId: session.id,
       source: "app_workout",
       localDate: todayStr,
-      durationMinutes: Math.max(
-        15,
-        Math.round(
-          (finishedAt.getTime() - new Date(session.startedAt).getTime()) / 60000
-        )
-      ),
+      durationMinutes,
       countsForStreak: true,
     });
+
+    const loadEa = calculateUnifiedSessionLoad({
+      durationMinutes,
+      rpe,
+      modalityCode: session.modalityCode,
+    });
+
+    await dispatchSmartNotification({
+      recipientUserId: user.id,
+      eventType: "workout_completed",
+      params: {
+        title: session.title,
+        durationMinutes,
+        loadEa,
+      },
+    });
+
+    await evaluateAndUnlockAchievements(user.id);
+
+    const { autoSyncTodayPlanCommitment } = await import("./planning");
+    await autoSyncTodayPlanCommitment("workout");
   }
 
   revalidatePath("/");
+  revalidatePath("/calendario");
   revalidatePath("/evolucao");
   revalidatePath("/analytics");
   revalidatePath("/performance");
@@ -573,4 +883,357 @@ export async function cancelWorkout(sessionId: string) {
     );
 
   revalidatePath("/");
+}
+
+export interface FreeActivityInput {
+  title: string;
+  modalityCode: string;
+  durationMinutes: number;
+  rpe: number;
+  localDate?: string;
+  distanceKm?: number | null;
+  notes?: string;
+}
+
+/**
+ * Registra qualquer atividade livre concluída (corrida, pedal, futsal, natação, caminhada, etc.)
+ * sem restringir às fichas previamente cadastradas.
+ */
+export async function logFreeActivity(input: FreeActivityInput) {
+  const user = await getOrCreateDemoUser();
+  const cleanTitle = input.title.trim();
+  if (!cleanTitle) {
+    throw new Error("Informe o nome da atividade.");
+  }
+
+  const duration = Math.max(5, Math.min(600, Math.round(input.durationMinutes || 45)));
+  const rpe = Math.max(1, Math.min(10, Math.round(input.rpe || 7)));
+  const dateStr =
+    input.localDate && /^\d{4}-\d{2}-\d{2}$/.test(input.localDate)
+      ? input.localDate
+      : new Date().toISOString().split("T")[0];
+
+  const finishedAt = new Date(`${dateStr}T12:00:00Z`);
+  const startedAt = new Date(finishedAt.getTime() - duration * 60_000);
+  const clientSessionId = `free_act_${Date.now()}_${Math.random()
+    .toString(36)
+    .substring(2, 8)}`;
+
+  const [session] = await db
+    .insert(schema.workoutSessions)
+    .values({
+      userId: user.id,
+      title: cleanTitle,
+      modalityCode: input.modalityCode || "other",
+      status: "completed",
+      startedAt,
+      finishedAt,
+      rpeSession: rpe,
+      notes: input.notes?.trim() || null,
+      clientSessionId,
+      timezone: "America/Sao_Paulo",
+    })
+    .returning();
+
+  await db.insert(schema.activityEvents).values({
+    userId: user.id,
+    sessionId: session.id,
+    source: "app_workout",
+    localDate: dateStr,
+    durationMinutes: duration,
+    countsForStreak: true,
+  });
+
+  if (typeof input.distanceKm === "number" && input.distanceKm > 0) {
+    await db.insert(schema.sessionMetrics).values({
+      sessionId: session.id,
+      metricKey: "distance_km",
+      metricValue: input.distanceKm,
+      unit: "km",
+    });
+  }
+
+  const modProfile = getModalityProfile(input.modalityCode);
+  const loadEa = calculateUnifiedSessionLoad({
+    durationMinutes: duration,
+    rpe,
+    modalityCode: input.modalityCode,
+    distanceKm: input.distanceKm,
+  });
+
+  await dispatchSmartNotification({
+    recipientUserId: user.id,
+    eventType: "free_activity_logged",
+    params: {
+      title: cleanTitle,
+      modalityLabel: modProfile.labelPt,
+      durationMinutes: duration,
+      loadEa,
+    },
+  });
+
+  await evaluateAndUnlockAchievements(user.id);
+
+  if (dateStr === new Date().toISOString().split("T")[0]) {
+    const { autoSyncTodayPlanCommitment } = await import("./planning");
+    await autoSyncTodayPlanCommitment("workout");
+  }
+
+  revalidatePath("/");
+  revalidatePath("/calendario");
+  revalidatePath("/evolucao");
+  revalidatePath("/comunidade");
+  revalidatePath("/perfil");
+  return session;
+}
+
+/**
+ * Inicia o cronômetro ao vivo para qualquer atividade livre (corrida, futsal, ciclismo, etc.).
+ */
+export async function startFreeActivity(input: {
+  title: string;
+  modalityCode: string;
+}) {
+  const user = await getOrCreateDemoUser();
+  const cleanTitle = input.title.trim() || "Atividade Livre";
+
+  const [existing] = await db
+    .select()
+    .from(schema.workoutSessions)
+    .where(
+      and(
+        eq(schema.workoutSessions.userId, user.id),
+        eq(schema.workoutSessions.status, "in_progress")
+      )
+    )
+    .limit(1);
+
+  if (existing) {
+    return existing;
+  }
+
+  const clientSessionId = `live_act_${Date.now()}_${Math.random()
+    .toString(36)
+    .substring(2, 8)}`;
+
+  const [session] = await db
+    .insert(schema.workoutSessions)
+    .values({
+      userId: user.id,
+      title: cleanTitle,
+      modalityCode: input.modalityCode || "other",
+      status: "in_progress",
+      startedAt: new Date(),
+      clientSessionId,
+      timezone: "America/Sao_Paulo",
+    })
+    .returning();
+
+  revalidatePath("/");
+  return session;
+}
+
+/**
+ * Salva ou atualiza o Check-in Matinal de 10 segundos (Sono, Energia, Musculatura, Humor)
+ * para recalibrar instantaneamente a Decisão do Dia (Fase 12).
+ */
+export async function submitMorningCheckin(input: MorningCheckinInput) {
+  const user = await getOrCreateDemoUser();
+  const todayStr =
+    input.localDate && /^\d{4}-\d{2}-\d{2}$/.test(input.localDate)
+      ? input.localDate
+      : new Date().toISOString().split("T")[0];
+
+  const cleanInput: MorningCheckinInput = {
+    sleepQuality: Math.max(1, Math.min(5, Math.round(input.sleepQuality || 4))),
+    energyLevel: Math.max(1, Math.min(5, Math.round(input.energyLevel || 4))),
+    muscleFreshness: Math.max(
+      1,
+      Math.min(5, Math.round(input.muscleFreshness || 4))
+    ),
+    moodLevel: Math.max(1, Math.min(5, Math.round(input.moodLevel || 4))),
+    localDate: todayStr,
+  };
+
+  const subjectiveScore = calculateSubjectiveReadinessScore(cleanInput);
+
+  // Verifica se já existe check-in hoje para atualizar sem duplicar
+  const recent = await db
+    .select()
+    .from(schema.bodyMetrics)
+    .where(
+      and(
+        eq(schema.bodyMetrics.userId, user.id),
+        eq(schema.bodyMetrics.metricType, "morning_checkin")
+      )
+    )
+    .orderBy(desc(schema.bodyMetrics.recordedAt))
+    .limit(5);
+
+  const existingToday = recent.find((row) => {
+    try {
+      const parsed = row.notes ? JSON.parse(row.notes) : null;
+      return (
+        parsed?.localDate === todayStr ||
+        new Date(row.recordedAt).toISOString().split("T")[0] === todayStr
+      );
+    } catch {
+      return false;
+    }
+  });
+
+  if (existingToday) {
+    await db
+      .update(schema.bodyMetrics)
+      .set({
+        valueNumeric: subjectiveScore,
+        notes: JSON.stringify(cleanInput),
+        recordedAt: new Date(),
+      })
+      .where(eq(schema.bodyMetrics.id, existingToday.id));
+  } else {
+    await db.insert(schema.bodyMetrics).values({
+      userId: user.id,
+      metricType: "morning_checkin",
+      valueNumeric: subjectiveScore,
+      unit: "pts",
+      visibility: "private",
+      source: "manual",
+      notes: JSON.stringify(cleanInput),
+    });
+  }
+
+  await dispatchSmartNotification({
+    recipientUserId: user.id,
+    eventType: "morning_checkin_done",
+    params: {
+      readinessScore: subjectiveScore,
+    },
+  });
+
+  revalidatePath("/");
+  revalidatePath("/calendario");
+  revalidatePath("/evolucao");
+  return {
+    subjectiveScore,
+    checkin: cleanInput,
+  };
+}
+
+/**
+ * Registra ou desmarca uma Atitude Regenerativa (+EA) no dia de hoje,
+ * aumentando a Reserva de Energia Adaptativa do usuário e alimentando o Motor ML.
+ */
+export async function toggleRecoveryAttitude(code: RecoveryAttitudeCode) {
+  const user = await getOrCreateDemoUser();
+  const meta = RECOVERY_ATTITUDE_MAP[code];
+  if (!meta) throw new Error("Atitude regenerativa inválida.");
+
+  const todayStr = new Date().toISOString().split("T")[0];
+  const recent = await db
+    .select()
+    .from(schema.bodyMetrics)
+    .where(
+      and(
+        eq(schema.bodyMetrics.userId, user.id),
+        eq(schema.bodyMetrics.metricType, "recovery_attitude")
+      )
+    )
+    .orderBy(desc(schema.bodyMetrics.recordedAt))
+    .limit(20);
+
+  const existing = recent.find((row) => {
+    try {
+      const parsed = row.notes ? JSON.parse(row.notes) : null;
+      return parsed?.code === code && parsed?.localDate === todayStr;
+    } catch {
+      return false;
+    }
+  });
+
+  if (existing) {
+    await db
+      .delete(schema.bodyMetrics)
+      .where(eq(schema.bodyMetrics.id, existing.id));
+  } else {
+    await db.insert(schema.bodyMetrics).values({
+      userId: user.id,
+      metricType: "recovery_attitude",
+      valueNumeric: meta.baseRechargeEa,
+      unit: "EA",
+      visibility: "private",
+      source: "manual",
+      notes: JSON.stringify({
+        code,
+        localDate: todayStr,
+        labelPt: meta.labelPt,
+      }),
+    });
+
+    await dispatchSmartNotification({
+      recipientUserId: user.id,
+      eventType: "recovery_attitude_logged",
+      params: {
+        title: meta.labelPt,
+        rechargeEa: meta.baseRechargeEa,
+      },
+    });
+
+    const { autoSyncTodayPlanCommitment } = await import("./planning");
+    await autoSyncTodayPlanCommitment("recharge_habit");
+  }
+
+  revalidatePath("/");
+  revalidatePath("/calendario");
+  revalidatePath("/evolucao");
+  return { active: !existing, code, baseRechargeEa: meta.baseRechargeEa };
+}
+
+/**
+ * Ativa ou desativa a Semana Regenerativa / Escudo de Recuperação (Streak com Perdão — Fase 14),
+ * protegendo o streak semanal quando o atleta ou o Motor ML priorizam regeneração.
+ */
+export async function toggleRegenerativeWeekShield() {
+  const user = await getOrCreateDemoUser();
+  const todayStr = new Date().toISOString().split("T")[0];
+  const currentWeekStart = getIsoWeekStart(todayStr);
+
+  const existingRows = await db
+    .select()
+    .from(schema.bodyMetrics)
+    .where(
+      and(
+        eq(schema.bodyMetrics.userId, user.id),
+        eq(schema.bodyMetrics.metricType, "regenerative_week_shield")
+      )
+    );
+
+  const existing = existingRows.find(
+    (r) => r.notes?.trim() === currentWeekStart
+  );
+
+  if (existing) {
+    await db
+      .delete(schema.bodyMetrics)
+      .where(eq(schema.bodyMetrics.id, existing.id));
+  } else {
+    await db.insert(schema.bodyMetrics).values({
+      userId: user.id,
+      metricType: "regenerative_week_shield",
+      valueNumeric: 1,
+      unit: "week",
+      visibility: "private",
+      source: "manual",
+      notes: currentWeekStart,
+    });
+
+    await dispatchSmartNotification({
+      recipientUserId: user.id,
+      eventType: "regenerative_shield_activated",
+    });
+  }
+
+  revalidatePath("/");
+  revalidatePath("/evolucao");
+  return { shielded: !existing, weekStart: currentWeekStart };
 }

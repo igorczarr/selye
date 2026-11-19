@@ -11,13 +11,15 @@ import {
   useUser,
 } from "@clerk/nextjs";
 import { SelyeLogo, SelyeMark } from "@/components/brand/logo";
-import { ThemeToggle } from "@/components/navigation/theme-toggle";
 import { BottomPill } from "@/components/navigation/bottom-pill";
 import { CommandPalette } from "@/components/navigation/command-palette";
-import {
-  getGlobalShellSnapshot,
-  type GlobalSearchSnapshot,
-} from "@/actions/search";
+import { getGlobalShellSnapshot, type GlobalSearchSnapshot } from "@/actions/search";
+import { getSmartNotifications } from "@/actions/notifications";
+import type { RescheduleProposal } from "@/core/performance/weekly-rescheduler";
+import { NotificationBell } from "@/components/navigation/notification-bell";
+import { QuickActivityLauncher } from "@/components/home/quick-activity-modal";
+import { ConditionArrowBadge } from "@/components/ui/condition-arrow-badge";
+import { resolveConditionArrow } from "@/core/performance/condition-arrow";
 import { resolveUserRole } from "@/core/auth/rbac";
 import { buildContextualGreeting } from "@/core/navigation/greeting";
 import {
@@ -26,6 +28,9 @@ import {
   PlusCircle,
   Search,
   ChevronDown,
+  Flame,
+  Sun,
+  Moon,
 } from "lucide-react";
 
 function RoleAccessMenu() {
@@ -145,6 +150,31 @@ function HeaderGreeting({ fallbackName }: { fallbackName?: string | null }) {
 export function Navbar() {
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [snapshot, setSnapshot] = useState<GlobalSearchSnapshot | null>(null);
+  const [notifications, setNotifications] = useState<RescheduleProposal[]>([]);
+  const [theme, setTheme] = useState<"light" | "dark">("light");
+
+  useEffect(() => {
+    const current =
+      document.documentElement.getAttribute("data-theme") === "dark"
+        ? "dark"
+        : "light";
+    setTheme(current);
+  }, []);
+
+  const handleToggleTheme = () => {
+    const next = theme === "dark" ? "light" : "dark";
+    setTheme(next);
+    if (next === "dark") {
+      document.documentElement.setAttribute("data-theme", "dark");
+    } else {
+      document.documentElement.removeAttribute("data-theme");
+    }
+    try {
+      localStorage.setItem("selye-theme", next);
+    } catch {
+      // ignora em modo privado
+    }
+  };
 
   useEffect(() => {
     let active = true;
@@ -153,6 +183,13 @@ export function Navbar() {
         if (active) setSnapshot(data);
       })
       .catch(() => {});
+
+    getSmartNotifications()
+      .then((data) => {
+        if (active) setNotifications(data);
+      })
+      .catch(() => {});
+
     return () => {
       active = false;
     };
@@ -182,7 +219,7 @@ export function Navbar() {
     <>
       {/* Top Bar enxuta (56 px): Logo + Saudação + Barra de Pesquisa (⌘K) + Nova Ficha + Perfil */}
       <header className="w-full overflow-x-clip border-b border-line bg-surface/85 backdrop-blur-xl supports-[backdrop-filter]:bg-surface/75 sticky top-0 z-40">
-        <div className="max-w-5xl mx-auto px-3 sm:px-6 h-14 flex items-center justify-between gap-2 sm:gap-4 min-w-0">
+        <div className="selye-container h-14 flex items-center justify-between gap-2 sm:gap-4 min-w-0">
           {/* Esquerda: Logo + Saudação Contextual */}
           <div className="flex items-center gap-3 min-w-0 shrink-0">
             <Link
@@ -203,7 +240,7 @@ export function Navbar() {
           </div>
 
           {/* Centro: Barra de Pesquisa global (abre Command Palette ⌘K) */}
-          <div className="flex-1 max-w-xs md:max-w-sm min-w-0">
+          <div className="flex-1 max-w-md xl:max-w-xl min-w-0">
             <button
               type="button"
               onClick={() => setPaletteOpen(true)}
@@ -225,8 +262,11 @@ export function Navbar() {
             </button>
           </div>
 
-          {/* Direita: Nova Ficha + Tema + Perfil */}
+          {/* Direita: Registrar Atividade + Nova Ficha + Notificações (Sininho) + Streak + Perfil */}
           <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
+            {/* Registrar Atividade ao lado de Nova Ficha */}
+            <QuickActivityLauncher variant="secondary" compact={true} />
+
             <Link
               href="/treinos/novo"
               aria-label="Criar nova ficha de treino"
@@ -236,7 +276,34 @@ export function Navbar() {
               <span className="hidden sm:inline">Nova Ficha</span>
             </Link>
 
-            <ThemeToggle />
+            {/* Sininho de Notificações com Inteligência Adaptativa */}
+            <NotificationBell proposals={notifications} />
+
+            {/* Contador de Streak no lugar do antigo botão de tema */}
+            <Link
+              href="/evolucao?tab=consistencia"
+              title={`Streak atual: ${snapshot?.currentWeeklyStreak ?? 0} ${
+                (snapshot?.currentWeeklyStreak ?? 0) === 1 ? "semana" : "semanas"
+              } · ${snapshot?.activeDaysInYear ?? 0} dias ativos no ano`}
+              aria-label={`Sequência semanal: ${snapshot?.currentWeeklyStreak ?? 0}`}
+              className={`h-9 px-2.5 rounded-lg border text-xs font-mono font-semibold inline-flex items-center gap-1.5 transition-colors shrink-0 ${
+                (snapshot?.currentWeeklyStreak ?? 0) > 0
+                  ? "border-lima/70 bg-lima/15 text-foreground hover:bg-lima/25"
+                  : "border-line bg-surface text-muted hover:text-foreground hover:bg-foreground/5"
+              }`}
+            >
+              <Flame
+                size={14}
+                className={
+                  (snapshot?.currentWeeklyStreak ?? 0) > 0
+                    ? "text-accent-text"
+                    : "text-muted"
+                }
+              />
+              <span className="t-data text-foreground">
+                {snapshot?.currentWeeklyStreak ?? 0}
+              </span>
+            </Link>
 
             <div className="flex items-center gap-1.5 ml-0.5">
               <Suspense
@@ -265,14 +332,51 @@ export function Navbar() {
                 <Show when="signed-in">
                   <div className="flex items-center gap-1.5">
                     <RoleAccessMenu />
-                    <UserButton
-                      appearance={{
-                        elements: {
-                          userButtonAvatarBox:
-                            "w-8 h-8 rounded-full border border-line",
-                        },
-                      }}
-                    />
+                    <div
+                      className="relative inline-flex items-center"
+                      title={
+                        resolveConditionArrow({
+                          reservePercent: snapshot?.eaReservePercent ?? 82,
+                          availableReserveEa: snapshot?.availableReserveEa,
+                          personalCapacityEa: snapshot?.personalCapacityEa,
+                        }).descriptionPt
+                      }
+                    >
+                      <UserButton
+                        appearance={{
+                          elements: {
+                            userButtonAvatarBox:
+                              "w-9 h-9 rounded-full border border-line shadow-sm",
+                            userButtonPopoverFooter: "hidden",
+                          },
+                        }}
+                      >
+                        <UserButton.MenuItems>
+                          <UserButton.Action
+                            label={
+                              theme === "dark"
+                                ? "Mudar para Tema Claro"
+                                : "Mudar para Tema Escuro"
+                            }
+                            labelIcon={
+                              theme === "dark" ? (
+                                <Sun size={14} />
+                              ) : (
+                                <Moon size={14} />
+                              )
+                            }
+                            onClick={handleToggleTheme}
+                          />
+                        </UserButton.MenuItems>
+                      </UserButton>
+                      <ConditionArrowBadge
+                        reservePercent={snapshot?.eaReservePercent ?? 82}
+                        availableReserveEa={snapshot?.availableReserveEa}
+                        personalCapacityEa={snapshot?.personalCapacityEa}
+                        size="sm"
+                        className="absolute -bottom-1 -right-1 pointer-events-none z-10"
+                      />
+                    </div>
                   </div>
                 </Show>
               </Suspense>

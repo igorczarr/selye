@@ -1,13 +1,28 @@
 import { Suspense } from "react";
 import { Navbar } from "@/components/navigation/navbar";
 import { IntegrationsHub } from "@/components/integrations/integrations-hub";
-import { getUserIntegrations } from "@/actions/integrations";
+import {
+  getUserIntegrations,
+  getBaselineCalibrationSnapshot,
+} from "@/actions/integrations";
+import { getUserNotificationPreferences } from "@/actions/notifications";
 
 export const instant = false;
 
 async function IntegrationsLoader() {
-  const integrations = await getUserIntegrations();
-  return <IntegrationsHub initialIntegrations={integrations} />;
+  const [integrations, calibration, notificationPreferences] =
+    await Promise.all([
+      getUserIntegrations(),
+      getBaselineCalibrationSnapshot(),
+      getUserNotificationPreferences(),
+    ]);
+  return (
+    <IntegrationsHub
+      initialIntegrations={integrations}
+      initialCalibration={calibration}
+      initialNotificationPreferences={notificationPreferences}
+    />
+  );
 }
 
 function IntegrationsSkeleton() {
@@ -36,7 +51,7 @@ export default function IntegracoesPage() {
   return (
     <div className="min-h-screen bg-background text-foreground flex flex-col pb-24">
       <Navbar />
-      <main className="max-w-4xl mx-auto px-4 sm:px-6 py-8 flex-1 w-full">
+      <main className="selye-container py-6 flex-1">
         <Suspense fallback={<IntegrationsSkeleton />}>
           <IntegrationsLoader />
         </Suspense>

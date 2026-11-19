@@ -11,6 +11,7 @@ import {
 } from "@/actions/community";
 import { blockUser, reportContent } from "@/actions/network";
 import { tokenizeSocialText, type TrendingTag } from "@/core/social/text-parser";
+import { ModalPortal } from "@/components/ui/modal-portal";
 import {
   Flame,
   ThumbsUp,
@@ -259,8 +260,87 @@ export function CommunityFeed({
 
   return (
     <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start fade-up">
-      {/* ================= COLUNA PRINCIPAL (FEED, COMPOSER, FIOS) ================= */}
-      <div className="lg:col-span-8 flex flex-col gap-5 min-w-0">
+      {/* ================= RAIL ESQUERDA DESKTOP (NAVEGAÇÃO, EQUIPES E REDE) ================= */}
+      <aside className="hidden xl:flex xl:col-span-3 flex-col gap-4 sticky top-20">
+        <section className="card p-3 flex flex-col gap-1">
+          <span className="t-label px-2.5 pt-1 pb-1.5 block">Feed</span>
+          {(
+            [
+              { id: "explore", label: "Explorar", icon: Compass },
+              { id: "following", label: "Seguindo", icon: UserCheck },
+              { id: "teams", label: "Equipes", icon: Users },
+              { id: "threads", label: "Fios & Threads", icon: MessagesSquare },
+            ] as const
+          ).map((tab) => {
+            const Icon = tab.icon;
+            const active = activeTab === tab.id && !activeTag;
+            return (
+              <Link
+                key={tab.id}
+                href={`/comunidade?tab=${tab.id}`}
+                className={`h-9 px-3 rounded-lg text-xs font-medium flex items-center gap-2.5 transition-colors ${
+                  active
+                    ? "bg-foreground text-background font-semibold"
+                    : "text-muted hover:text-foreground hover:bg-foreground/5"
+                }`}
+              >
+                <Icon size={15} />
+                <span>{tab.label}</span>
+              </Link>
+            );
+          })}
+        </section>
+
+        <section className="card p-4 flex flex-col gap-2.5">
+          <div className="flex items-center justify-between">
+            <span className="t-label">Minhas Equipes</span>
+            <Link
+              href="/equipes"
+              className="t-aux text-accent-text hover:underline"
+            >
+              Gerenciar
+            </Link>
+          </div>
+          {userTeams.length === 0 ? (
+            <p className="text-xs text-muted">
+              Entre ou crie uma equipe para abrir fios de discussão em grupo.
+            </p>
+          ) : (
+            <div className="flex flex-col gap-1.5">
+              {userTeams.map((t) => (
+                <Link
+                  key={t.teamId}
+                  href="/comunidade?tab=teams"
+                  className="px-2.5 py-2 rounded-lg text-xs font-medium text-foreground hover:bg-foreground/5 flex items-center gap-2 transition-colors"
+                >
+                  <Users size={13} className="text-accent-text shrink-0" />
+                  <span className="truncate">{t.teamName}</span>
+                </Link>
+              ))}
+            </div>
+          )}
+        </section>
+
+        <section className="card p-3 flex flex-col gap-1.5">
+          <Link
+            href="/comunidade/atletas"
+            className="btn btn-ghost h-9 w-full justify-start text-xs"
+          >
+            <UserPlus size={14} className="text-accent-text" />
+            <span>Descobrir Atletas</span>
+          </Link>
+          <Link
+            href="/comunidade/desafios"
+            className="btn btn-ghost h-9 w-full justify-start text-xs"
+          >
+            <Trophy size={14} className="text-accent-text" />
+            <span>Ranking & Desafios</span>
+          </Link>
+        </section>
+      </aside>
+
+      {/* ================= COLUNA CENTRAL (COMPOSER + FEED EM LARGURA IDEAL DE LEITURA) ================= */}
+      <div className="lg:col-span-8 xl:col-span-6 flex flex-col gap-5 min-w-0">
         {/* Banner de status */}
         {statusBanner && (
           <div
@@ -301,11 +381,11 @@ export function CommunityFeed({
           </div>
         )}
 
-        {/* Abas do Feed (Explorar · Seguindo · Equipes · Fios/Threads) */}
+        {/* Abas do Feed (abaixo de xl; em telas largas fica na rail esquerda fixa) */}
         <div
           role="tablist"
           aria-label="Filtros do mural esportivo"
-          className="card p-1.5 flex items-center gap-1 overflow-x-auto no-scrollbar"
+          className="card p-1.5 flex xl:hidden items-center gap-1 overflow-x-auto no-scrollbar"
         >
           {(
             [
@@ -685,10 +765,10 @@ export function CommunityFeed({
                     <div className="rounded-xl bg-gradient-to-br from-noite to-grafite text-osso p-4 flex flex-col gap-3 border border-white/10">
                       <div className="flex items-center justify-between gap-2">
                         <span className="t-label !text-lima">
-                          SELYE WORKOUT CHECK-IN
+                          TREINO CONCLUÍDO NO SELYE
                         </span>
                         <span className="px-2 py-0.5 rounded-full bg-white/10 text-xs font-mono text-osso">
-                          RPE {post.workoutReport.rpe || 8}/10
+                          Esforço {post.workoutReport.rpe || 8}/10
                         </span>
                       </div>
                       <h3 className="font-semibold text-base text-osso">
@@ -919,8 +999,8 @@ export function CommunityFeed({
         )}
       </div>
 
-      {/* ================= RAIL LATERAL (EM ALTA #HASHTAGS + DESAFIOS GYMRATS) ================= */}
-      <aside className="lg:col-span-4 flex flex-col gap-4 lg:sticky lg:top-20">
+      {/* ================= RAIL DIREITA (EM ALTA #HASHTAGS + DESAFIOS GYMRATS) ================= */}
+      <aside className="lg:col-span-4 xl:col-span-3 flex flex-col gap-4 lg:sticky lg:top-20">
         {/* Em Alta (#Hashtags) */}
         <section className="card p-5 flex flex-col gap-3">
           <div className="flex items-center justify-between">
@@ -987,8 +1067,8 @@ export function CommunityFeed({
           )}
         </section>
 
-        {/* Atalhos da Rede */}
-        <section className="card p-4 flex flex-col gap-2">
+        {/* Atalhos da Rede (visíveis abaixo de xl, já presentes na rail esquerda no desktop largo) */}
+        <section className="card p-4 flex flex-col gap-2 xl:hidden">
           <Link
             href="/comunidade/atletas"
             className="btn btn-ghost h-9 w-full justify-start text-xs"
@@ -1006,79 +1086,77 @@ export function CommunityFeed({
         </section>
       </aside>
 
-      {/* Modal Customizado de Bloqueio (sem confirm() nativo) */}
-      {blockTarget && (
-        <div
-          role="dialog"
-          aria-modal="true"
-          className="fixed inset-0 z-50 bg-noite/70 backdrop-blur-sm flex items-center justify-center p-4"
-        >
-          <div className="card p-6 max-w-sm w-full flex flex-col gap-4">
-            <h3 className="t-h3">Bloquear {blockTarget.authorName}?</h3>
-            <p className="text-xs text-muted leading-relaxed">
-              Você deixará de ver publicações e interações deste perfil imediatamente.
-            </p>
-            <div className="flex justify-end gap-2">
-              <button
-                type="button"
-                onClick={() => setBlockTarget(null)}
-                className="btn btn-ghost h-9 px-3 text-xs"
-              >
-                Cancelar
-              </button>
-              <button
-                type="button"
-                disabled={isPending}
-                onClick={handleConfirmBlock}
-                className="btn btn-dark h-9 px-4 text-xs"
-              >
-                Confirmar Bloqueio
-              </button>
-            </div>
+      {/* Modal Customizado de Bloqueio via ModalPortal */}
+      <ModalPortal
+        open={Boolean(blockTarget)}
+        onClose={() => setBlockTarget(null)}
+        ariaLabel="Confirmar bloqueio de perfil"
+        maxWidthClass="max-w-sm"
+      >
+        <div className="card p-6 w-full bg-surface border border-line shadow-2xl flex flex-col gap-4">
+          <h3 className="t-h3">Bloquear {blockTarget?.authorName}?</h3>
+          <p className="text-xs text-muted leading-relaxed">
+            Você deixará de ver publicações e interações deste perfil imediatamente.
+          </p>
+          <div className="flex justify-end gap-2">
+            <button
+              type="button"
+              onClick={() => setBlockTarget(null)}
+              className="btn btn-ghost h-9 px-3 text-xs"
+            >
+              Cancelar
+            </button>
+            <button
+              type="button"
+              disabled={isPending}
+              onClick={handleConfirmBlock}
+              className="btn btn-dark h-9 px-4 text-xs"
+            >
+              Confirmar Bloqueio
+            </button>
           </div>
         </div>
-      )}
+      </ModalPortal>
 
-      {/* Modal Customizado de Denúncia */}
-      {reportTarget && (
-        <div
-          role="dialog"
-          aria-modal="true"
-          className="fixed inset-0 z-50 bg-noite/70 backdrop-blur-sm flex items-center justify-center p-4"
+      {/* Modal Customizado de Denúncia via ModalPortal */}
+      <ModalPortal
+        open={Boolean(reportTarget)}
+        onClose={() => setReportTarget(null)}
+        ariaLabel="Denunciar publicação"
+        maxWidthClass="max-w-sm"
+      >
+        <form
+          onSubmit={handleReportSubmit}
+          className="card p-6 w-full bg-surface border border-line shadow-2xl flex flex-col gap-4"
         >
-          <form
-            onSubmit={handleReportSubmit}
-            className="card p-6 max-w-sm w-full flex flex-col gap-4"
-          >
-            <h3 className="t-h3">Denunciar publicação</h3>
-            <textarea
-              rows={3}
-              required
-              minLength={5}
-              value={reportReason}
-              onChange={(e) => setReportReason(e.target.value)}
-              placeholder="Descreva o motivo da denúncia (mín. 5 caracteres)..."
-              className="input h-auto py-2 text-xs"
-            />
-            <div className="flex justify-end gap-2">
-              <button
-                type="button"
-                onClick={() => setReportTarget(null)}
-                className="btn btn-ghost h-9 px-3 text-xs"
-              >
-                Cancelar
-              </button>
-              <button
-                type="submit"
-                disabled={isPending || reportReason.trim().length < 5}
-                className="btn btn-primary h-9 px-4 text-xs"
-              >
-                Enviar Denúncia
-              </button>
-            </div>
-          </form>
-        </div>
-      )}
+          <h3 className="t-h3">Denunciar publicação</h3>
+          <textarea
+            rows={3}
+            required
+            minLength={5}
+            value={reportReason}
+            onChange={(e) => setReportReason(e.target.value)}
+            placeholder="Descreva o motivo da denúncia (mín. 5 caracteres)..."
+            className="input h-auto py-2 text-xs"
+          />
+          <div className="flex justify-end gap-2">
+            <button
+              type="button"
+              onClick={() => setReportTarget(null)}
+              className="btn btn-ghost h-9 px-3 text-xs"
+            >
+              Cancelar
+            </button>
+            <button
+              type="submit"
+              disabled={isPending || reportReason.trim().length < 5}
+              className="btn btn-primary h-9 px-4 text-xs"
+            >
+              Enviar Denúncia
+            </button>
+          </div>
+        </form>
+      </ModalPortal>
     </div>
   );
 }

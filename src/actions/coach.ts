@@ -5,6 +5,7 @@ import * as schema from "@/db/schema";
 import { eq, desc, and } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { getOrCreateDemoUser } from "./workout";
+import { dispatchSmartNotification } from "./notifications";
 import { assertActionRole } from "@/lib/auth-role";
 
 export async function getCoachDashboardData() {
@@ -115,6 +116,23 @@ export async function publishProgramVersion(
       rawPlanData: newPlanData,
     })
     .returning();
+
+  const [prog] = await db
+    .select()
+    .from(schema.trainingPrograms)
+    .where(eq(schema.trainingPrograms.id, programId))
+    .limit(1);
+
+  if (prog) {
+    await dispatchSmartNotification({
+      recipientUserId: prog.creatorUserId || undefined,
+      eventType: "coach_program_published",
+      params: {
+        programTitle: prog.title,
+        customNotes: changeLog,
+      },
+    });
+  }
 
   revalidatePath("/coach");
   return newVersion;

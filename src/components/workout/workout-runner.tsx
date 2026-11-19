@@ -271,8 +271,8 @@ export function WorkoutRunner({
             </button>
           </div>
         ) : (
-          <div className="-mx-4 sm:mx-0 overflow-x-auto no-scrollbar snap-x snap-mandatory">
-            <div className="flex gap-3 px-4 sm:px-0 pb-1">
+          <div className="-mx-4 sm:mx-0 overflow-x-auto sm:overflow-visible no-scrollbar snap-x snap-mandatory">
+            <div className="flex sm:grid sm:grid-cols-2 lg:grid-cols-3 gap-3 px-4 sm:px-0 pb-1">
               {routines.map((r) => {
                 const tpl = r.templates?.[0];
                 const day = tpl?.dayOfWeek;
@@ -284,7 +284,7 @@ export function WorkoutRunner({
                 return (
                   <article
                     key={r.id}
-                    className={`card card-interactive snap-start shrink-0 w-[240px] p-4 flex flex-col justify-between gap-4 ${
+                    className={`card card-interactive snap-start shrink-0 w-[240px] sm:w-auto p-4 flex flex-col justify-between gap-4 ${
                       isToday ? "border-lima ring-1 ring-lima/60" : ""
                     }`}
                   >
@@ -335,10 +335,10 @@ export function WorkoutRunner({
             <div>
               <span className="t-label !text-accent-text">Sessão registrada</span>
               <p className="font-semibold text-foreground text-sm mt-0.5">
-                Treino concluído com RPE {sessionRpe}/10.
+                Treino concluído com esforço nota {sessionRpe}/10.
               </p>
               <p className="text-xs text-muted mt-0.5">
-                Seu volume acumulado, consistência semanal e histórico foram atualizados.
+                Sua evolução, sequência semanal e bateria do corpo já foram atualizadas.
               </p>
             </div>
           </div>
@@ -414,13 +414,15 @@ export function WorkoutRunner({
         </div>
       </div>
 
-      {/* Barra de progresso da sessão */}
-      <div className="w-full h-1.5 bg-foreground/10 rounded-full overflow-hidden">
-        <div
-          className="h-full bg-lima transition-all duration-300"
-          style={{ width: `${progressPercent}%` }}
-        />
-      </div>
+      {/* Barra de progresso da sessão (somente para fichas com séries prescritas) */}
+      {totalSetsCount > 0 && (
+        <div className="w-full h-1.5 bg-foreground/10 rounded-full overflow-hidden">
+          <div
+            className="h-full bg-lima transition-all duration-300"
+            style={{ width: `${progressPercent}%` }}
+          />
+        </div>
+      )}
 
       {/* Timer de Descanso em Destaque */}
       {restRemaining !== null && restRemaining > 0 && (
@@ -467,10 +469,30 @@ export function WorkoutRunner({
         </div>
       )}
 
-      {/* Movimentos Prescritos com Séries Reais Editáveis */}
-      <div className="flex flex-col gap-3">
-        <span className="t-label">Movimentos Prescritos</span>
-        {normalizedExercises.map((ex, exIndex) => (
+      {/* Movimentos Prescritos ou Modo Atividade Livre (corrida, futsal, ciclismo, etc.) */}
+      {normalizedExercises.length === 0 ? (
+        <div className="rounded-xl border border-line bg-foreground/[0.02] p-5 flex items-center justify-between gap-4">
+          <div className="space-y-1">
+            <span className="t-label !text-accent-text">
+              Cronômetro de Atividade Livre
+            </span>
+            <p className="text-sm text-foreground font-medium">
+              Seu tempo está sendo contabilizado em segundo plano mesmo se você sair da tela.
+            </p>
+            <p className="text-xs text-muted">
+              Ao terminar, selecione o esforço do treino abaixo e toque em Concluir Treino.
+            </p>
+          </div>
+        </div>
+      ) : (
+        <div className="flex flex-col gap-3">
+          <div className="flex items-center justify-between gap-2 flex-wrap">
+            <span className="t-label">Exercícios do seu Treino</span>
+            <span className="text-[11px] font-mono text-muted">
+              Dica: toque no nome do exercício para assistir ao vídeo de como fazer
+            </span>
+          </div>
+          {normalizedExercises.map((ex, exIndex) => (
           <div
             key={ex.sessionExerciseId ?? ex.id}
             className="rounded-xl border border-line p-4 bg-foreground/[0.02] flex flex-col gap-3"
@@ -517,7 +539,7 @@ export function WorkoutRunner({
                     }`}
                   >
                     <span className="col-span-2 t-data text-xs font-semibold text-muted">
-                      S{set.setNumber}
+                      Série {set.setNumber}
                     </span>
 
                     <div className="col-span-4 flex items-center gap-1">
@@ -546,7 +568,7 @@ export function WorkoutRunner({
                         aria-label={`Repetições da série ${set.setNumber}`}
                         className="w-full h-9 px-2 rounded-md border border-line bg-background text-foreground t-data text-xs text-center focus:outline-none focus:border-profundo"
                       />
-                      <span className="text-[11px] font-mono text-muted">r</span>
+                      <span className="text-[11px] font-mono text-muted">reps</span>
                     </div>
 
                     <div className="col-span-3 flex justify-end">
@@ -572,12 +594,15 @@ export function WorkoutRunner({
             </div>
           </div>
         ))}
-      </div>
+        </div>
+      )}
 
-      {/* RPE + Finalização */}
+      {/* Esforço + Finalização */}
       <div className="pt-4 border-t border-line flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div className="flex flex-col gap-1.5">
-          <span className="t-label">Esforço percebido da sessão (RPE)</span>
+          <span className="t-label">
+            Como você avalia o esforço deste treino? (6 = Moderado · 10 = Máximo)
+          </span>
           <div className="flex items-center gap-1.5">
             {[6, 7, 8, 9, 10].map((rpeValue) => (
               <button

@@ -8,17 +8,42 @@ import { getOrCreateDemoUser } from "./workout";
 import {
   aggregateDailyLoads,
   calculateACWR,
+  calculateUnifiedSessionLoad,
+  calculateWeeklyRecoveryBudget,
+  getModalityProfile,
   type ACWRResult,
+  type RecoveryBudgetResult,
 } from "@/core/performance/training-load";
+import {
+  evaluateDailyDecision,
+  type DailyDecisionResult,
+  type MorningCheckinInput,
+} from "@/core/performance/daily-decision";
 import {
   generatePerformanceRecommendations,
   type PerformanceRecommendation,
 } from "@/core/performance/recommendations-engine";
-import { calculateWeeklyStreak } from "@/core/consistency/streak-calculator";
+import {
+  calculateWeeklyStreak,
+  getIsoWeekStart,
+} from "@/core/consistency/streak-calculator";
 import { getWeekdayLabelPt, jsDayToMondayIndex } from "@/lib/week";
+import {
+  learnAdaptiveAthleteProfile,
+  RECOVERY_ATTITUDE_MAP,
+  type AdaptiveAthleteMLProfile,
+  type HistoricalCheckinSample,
+  type LoggedRecoveryAttitude,
+  type RecoveryAttitudeCode,
+} from "@/core/ml/adaptive-athlete-engine";
 
 export interface EvolutionData {
   acwrResult: ACWRResult;
+  recoveryBudget: RecoveryBudgetResult;
+  adaptiveProfile: AdaptiveAthleteMLProfile;
+  dailyDecision: DailyDecisionResult;
+  todayCheckin: MorningCheckinInput | null;
+  isCurrentWeekShielded: boolean;
   recommendations: PerformanceRecommendation[];
   calibrationSessionsCount: number;
   averageRpe: number;
@@ -61,10 +86,12 @@ export interface EvolutionData {
     id: string;
     title: string;
     modalityCode: string;
+    modalityLabel: string;
     status: string;
     startedAt: string;
     finishedAt: string | null;
     rpeSession: number | null;
+    loadUa: number;
   }[];
 }
 
@@ -83,7 +110,14 @@ export async function getEvolutionData(): Promise<EvolutionData> {
   const past28Str = past28Days.toISOString().split("T")[0];
   const currentYearPrefix = `${now.getFullYear()}-`;
 
-  const [workouts, streakRows, goalRows, activityRows] = await Promise.all([
+  const [
+    workouts,
+    streakRows,
+    goalRows,
+    activityRows,
+    recentBodyMetrics,
+    userProfileRows,
+  ] = await Promise.all([
     db
       .select()
       .from(schema.workoutSessions)
@@ -104,6 +138,17 @@ export async function getEvolutionData(): Promise<EvolutionData> {
       .select()
       .from(schema.activityEvents)
       .where(eq(schema.activityEvents.userId, user.id)),
+    db
+      .select()
+      .from(schema.bodyMetrics)
+      .where(eq(schema.bodyMetrics.userId, user.id))
+      .orderBy(desc(schema.bodyMetrics.recordedAt))
+      .limit(60),
+    db
+      .select()
+      .from(schema.profiles)
+      .where(eq(schema.profiles.userId, user.id))
+      .limit(1),
   ]);
 
   const completedWorkouts = workouts.filter((w) => w.status === "completed");
@@ -160,6 +205,125 @@ export async function getEvolutionData(): Promise<EvolutionData> {
       : 0;
 
   const targetDaysPerWeek = goalRows[0]?.targetDaysPerWeek || 4;
+  const currentIsoWeekStart = getIsoWeekStart(todayStr);
+
+  const shieldedWeeks: string[] = [];
+  let todayCheckin: MorningCheckinInput | null = null;
+  const checkinsLast28Days: HistoricalCheckinSample[] = [];
+  const recoveryAttitudesLast7Days: LoggedRecoveryAttitude[] = [];
+  let restingHrBpm: number | null = null;
+
+  for (const row of recentBodyMetrics) {
+    const recDate = new Date(row.recordedAt).toISOString().split("T")[0];
+    if (
+      row.metricType === "regenerative_week_shield" &&
+      row.valueNumeric > 0 &&
+      row.notes
+    ) {
+      shieldedWeeks.push(row.notes.trim());
+    } else if (row.metricType === "resting_hr" && restingHrBpm === null) {
+      restingHrBpm = row.valueNumeric;
+    } else if (row.metricType === "morning_checkin") {
+      let parsed: any = null;
+      if (row.notes) {
+        try {
+          parsed = JSON.parse(row.notes);
+        } catch {
+          parsed = null;
+        }
+      }
+      const localDate = parsed?.localDate || recDate;
+      if (parsed && localDate >= past28Str) {
+        const sample: HistoricalCheckinSample = {
+          localDate,
+          sleepQuality: Number(parsed.sleepQuality) || 4,
+          energyLevel: Number(parsed.energyLevel) || 4,
+          muscleFreshness: Number(parsed.muscleFreshness) || 4,
+          moodLevel: Number(parsed.moodLevel) || 4,
+        };
+        checkinsLast28Days.push(sample);
+        if (localDate === todayStr && !todayCheckin) {
+          todayCheckin = sample;
+        }
+      }
+    } else if (row.metricType === "recovery_attitude" && row.notes) {
+      try {
+        const parsed = JSON.parse(row.notes);
+        if (parsed?.code && parsed.code in RECOVERY_ATTITUDE_MAP) {
+          recoveryAttitudesLast7Days.push({
+            code: parsed.code as RecoveryAttitudeCode,
+            localDate: parsed.localDate || recDate,
+            rechargeEa: row.valueNumeric || undefined,
+          });
+        }
+      } catch {
+        // ignora
+      }
+    }
+  }
+
+  const isCurrentWeekShielded = shieldedWeeks.includes(currentIsoWeekStart);
+
+  const baseRecoveryBudget = calculateWeeklyRecoveryBudget({
+    sessionsLast7Days: last7Sessions.map((s) => ({
+      modalityCode: s.modality,
+      durationMinutes: s.durationMinutes,
+      rpe: s.rpe,
+    })),
+    chronicDailyLoadUa: acwrResult.chronicLoad,
+    targetDaysPerWeek,
+  });
+
+  const adaptiveProfile = learnAdaptiveAthleteProfile({
+    experienceLevel: userProfileRows[0]?.experienceLevel || "intermediate",
+    targetDaysPerWeek,
+    currentWeeklyStreak: streakRows[0]?.currentWeeklyStreak || 0,
+    restingHrBpm,
+    sessionsLast28Days: sessionLoadInputs.map((s) => ({
+      date: s.date,
+      modalityCode: s.modality || "strength",
+      durationMinutes: s.durationMinutes,
+      rpe: s.rpe,
+      rawLoadEa: calculateUnifiedSessionLoad({
+        durationMinutes: s.durationMinutes,
+        rpe: s.rpe,
+        modalityCode: s.modality,
+      }),
+    })),
+    checkinsLast28Days,
+    recoveryAttitudesLast7Days,
+    todayDateStr: todayStr,
+  });
+
+  const recoveryBudget = {
+    ...baseRecoveryBudget,
+    weeklyBudgetTargetUa: adaptiveProfile.personalCapacityEa,
+    weeklySpentUa: adaptiveProfile.netSpentEa,
+    weeklyRemainingUa: adaptiveProfile.availableReserveEa,
+    usagePercent: adaptiveProfile.usagePercent,
+  };
+
+  const yesterdayDate = new Date(now);
+  yesterdayDate.setDate(now.getDate() - 1);
+  const yesterdayStr = yesterdayDate.toISOString().split("T")[0];
+  const yesterdayLoadUa = dailyLoads.get(yesterdayStr) || 0;
+  const yesterdaySession = sessionLoadInputs.find(
+    (s) => s.date === yesterdayStr
+  );
+  const yesterdayModalityLabel = yesterdaySession
+    ? getModalityProfile(yesterdaySession.modality).labelPt
+    : null;
+
+  const dailyDecision = evaluateDailyDecision({
+    checkin: todayCheckin,
+    yesterdayLoadUa,
+    yesterdayLastModalityLabel: yesterdayModalityLabel,
+    recoveryBudgetUsagePercent: recoveryBudget.usagePercent,
+    recoveryBudgetRemainingUa: recoveryBudget.weeklyRemainingUa,
+    acwr: acwrResult.acwr,
+    consecutiveTrainingDays: consecutiveDays,
+  });
+
   const recommendations = generatePerformanceRecommendations({
     acwrResult,
     consecutiveTrainingDays: consecutiveDays,
@@ -279,7 +443,8 @@ export async function getEvolutionData(): Promise<EvolutionData> {
   const streakCalc = calculateWeeklyStreak(
     allUniqueDates,
     targetDaysPerWeek,
-    todayStr
+    todayStr,
+    shieldedWeeks
   );
   const activeDaysLast28 = allUniqueDates.filter((d) => d >= past28Str).length;
   const activeDaysInYear = allUniqueDates.filter((d) =>
@@ -315,6 +480,11 @@ export async function getEvolutionData(): Promise<EvolutionData> {
 
   return {
     acwrResult,
+    recoveryBudget,
+    adaptiveProfile,
+    dailyDecision,
+    todayCheckin,
+    isCurrentWeekShielded,
     recommendations,
     calibrationSessionsCount: last28Completed.length,
     averageRpe,
@@ -341,14 +511,34 @@ export async function getEvolutionData(): Promise<EvolutionData> {
     },
     personalRecords,
     heatmapDays,
-    recentWorkouts: workouts.map((w) => ({
-      id: w.id,
-      title: w.title,
-      modalityCode: w.modalityCode,
-      status: w.status,
-      startedAt: new Date(w.startedAt).toISOString(),
-      finishedAt: w.finishedAt ? new Date(w.finishedAt).toISOString() : null,
-      rpeSession: w.rpeSession,
-    })),
+    recentWorkouts: workouts.map((w) => {
+      const durationMinutes = w.finishedAt
+        ? Math.max(
+            15,
+            Math.round(
+              (new Date(w.finishedAt).getTime() -
+                new Date(w.startedAt).getTime()) /
+                60000
+            )
+          )
+        : 45;
+      const modProfile = getModalityProfile(w.modalityCode);
+      const loadUa = calculateUnifiedSessionLoad({
+        durationMinutes,
+        rpe: w.rpeSession || 7,
+        modalityCode: w.modalityCode,
+      });
+      return {
+        id: w.id,
+        title: w.title,
+        modalityCode: w.modalityCode,
+        modalityLabel: modProfile.labelPt,
+        status: w.status,
+        startedAt: new Date(w.startedAt).toISOString(),
+        finishedAt: w.finishedAt ? new Date(w.finishedAt).toISOString() : null,
+        rpeSession: w.rpeSession,
+        loadUa,
+      };
+    }),
   };
 }

@@ -5,6 +5,7 @@ import * as schema from "@/db/schema";
 import { eq, desc, and } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { getOrCreateDemoUser } from "./workout";
+import { dispatchSmartNotification } from "./notifications";
 
 export async function getAchievementsCatalog() {
   return await db
@@ -50,7 +51,25 @@ export async function getUserAchievements(userId?: string) {
 export async function evaluateAndUnlockAchievements(userId: string) {
   // 1. Obter catálogo de conquistas
   const catalog = await db.select().from(schema.achievements);
-  const catalogMap = new Map(catalog.map((a) => [a.code, a.id]));
+  const catalogMap = new Map(catalog.map((a) => [a.code, a]));
+
+  const notifyAchievement = async (code: string) => {
+    const ach = catalogMap.get(code);
+    if (!ach) return;
+    await db.insert(schema.userAchievements).values({
+      userId,
+      achievementId: ach.id,
+    });
+    unlockedCodes.add(code);
+    await dispatchSmartNotification({
+      recipientUserId: userId,
+      eventType: "achievement_unlocked",
+      params: {
+        achievementTitle: ach.title,
+        achievementDescription: ach.description,
+      },
+    });
+  };
 
   // 2. Conquistas que o usuário já tem
   const currentUnlocked = await db
@@ -78,14 +97,7 @@ export async function evaluateAndUnlockAchievements(userId: string) {
       .limit(1);
 
     if (sessions.length > 0) {
-      const achId = catalogMap.get("first_workout");
-      if (achId) {
-        await db.insert(schema.userAchievements).values({
-          userId,
-          achievementId: achId,
-        });
-        unlockedCodes.add("first_workout");
-      }
+      await notifyAchievement("first_workout");
     }
   }
 
@@ -98,25 +110,11 @@ export async function evaluateAndUnlockAchievements(userId: string) {
 
   if (streak) {
     if (streak.currentWeeklyStreak >= 3 && !unlockedCodes.has("streak_week_3")) {
-      const achId = catalogMap.get("streak_week_3");
-      if (achId) {
-        await db.insert(schema.userAchievements).values({
-          userId,
-          achievementId: achId,
-        });
-        unlockedCodes.add("streak_week_3");
-      }
+      await notifyAchievement("streak_week_3");
     }
 
     if (streak.currentWeeklyStreak >= 10 && !unlockedCodes.has("streak_week_10")) {
-      const achId = catalogMap.get("streak_week_10");
-      if (achId) {
-        await db.insert(schema.userAchievements).values({
-          userId,
-          achievementId: achId,
-        });
-        unlockedCodes.add("streak_week_10");
-      }
+      await notifyAchievement("streak_week_10");
     }
   }
 
@@ -128,14 +126,7 @@ export async function evaluateAndUnlockAchievements(userId: string) {
       .where(eq(schema.userSports.userId, userId));
 
     if (sports.length >= 2) {
-      const achId = catalogMap.get("multimodal_athlete");
-      if (achId) {
-        await db.insert(schema.userAchievements).values({
-          userId,
-          achievementId: achId,
-        });
-        unlockedCodes.add("multimodal_athlete");
-      }
+      await notifyAchievement("multimodal_athlete");
     }
   }
 
@@ -153,14 +144,7 @@ export async function evaluateAndUnlockAchievements(userId: string) {
       .limit(1);
 
     if (teams.length > 0) {
-      const achId = catalogMap.get("team_belonging");
-      if (achId) {
-        await db.insert(schema.userAchievements).values({
-          userId,
-          achievementId: achId,
-        });
-        unlockedCodes.add("team_belonging");
-      }
+      await notifyAchievement("team_belonging");
     }
   }
 
@@ -173,14 +157,7 @@ export async function evaluateAndUnlockAchievements(userId: string) {
       .limit(1);
 
     if (prMetrics.length > 0) {
-      const achId = catalogMap.get("pr_achiever");
-      if (achId) {
-        await db.insert(schema.userAchievements).values({
-          userId,
-          achievementId: achId,
-        });
-        unlockedCodes.add("pr_achiever");
-      }
+      await notifyAchievement("pr_achiever");
     }
   }
 }

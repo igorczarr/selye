@@ -59,7 +59,7 @@ export default function EvolucaoPage(props: {
   return (
     <div className="min-h-screen bg-background text-foreground flex flex-col pb-24">
       <Navbar />
-      <main className="max-w-5xl mx-auto px-4 sm:px-6 py-6 flex-1 w-full">
+      <main className="selye-container py-6 flex-1">
         <Suspense fallback={<EvolutionSkeleton />}>
           <EvolutionLoader searchParams={props.searchParams} />
         </Suspense>

@@ -12,10 +12,13 @@ import {
   muscleToPt,
   splitInstructionSteps,
 } from "@/core/catalog/exercise-media";
+import { getExerciseCategoryMeta } from "@/core/catalog/exercise-categories";
+import { searchYouTubeExerciseVideo } from "@/lib/youtube-search";
 
 export interface ExerciseDetail {
   id: string;
   namePt: string;
+  categoryLabel: string;
   primaryMuscle: string | null;
   secondaryMuscles: string[];
   equipment: string[];
@@ -59,11 +62,34 @@ export async function getExerciseDetail(id: string): Promise<ExerciseDetail | nu
   const hasEnglishOnly = looksEnglish(instructions);
   const steps = hasEnglishOnly ? [] : splitInstructionSteps(instructions);
   const safety = ex.safetyInfoPt && !looksEnglish(ex.safetyInfoPt) ? ex.safetyInfoPt : null;
-  const media = classifyMedia(ex.mediaUrls);
+  let media = classifyMedia(ex.mediaUrls);
+
+  // Busca e persiste automaticamente o vídeo demonstrativo do YouTube na 1ª consulta
+  if (media.youtubeEmbeds.length === 0 && process.env.YOUTUBE_API_KEY) {
+    const hit = await searchYouTubeExerciseVideo(ex.namePt, ex.nameEn);
+    if (hit) {
+      const currentUrls = Array.isArray(ex.mediaUrls) ? ex.mediaUrls : [];
+      if (!currentUrls.includes(hit.watchUrl)) {
+        const updatedUrls = [...currentUrls, hit.watchUrl];
+        try {
+          await db
+            .update(schema.exercises)
+            .set({ mediaUrls: updatedUrls, updatedAt: new Date() })
+            .where(eq(schema.exercises.id, ex.id));
+        } catch {
+          // Ignora falha de cache não-bloqueante
+        }
+        media = classifyMedia(updatedUrls);
+      }
+    }
+  }
+
+  const categoryMeta = getExerciseCategoryMeta(ex);
 
   return {
     id: ex.id,
     namePt: ex.namePt,
+    categoryLabel: categoryMeta.label,
     primaryMuscle: row.musclePt ?? (row.muscleCode ? muscleToPt(row.muscleCode) : null),
     secondaryMuscles: (ex.secondaryMuscles ?? []).map((m) => muscleToPt(m)),
     equipment: (ex.equipmentCodes ?? []).map((e) => equipmentToPt(e)),

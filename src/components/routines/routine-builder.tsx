@@ -1,8 +1,8 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useState, useMemo, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { createRoutine } from "@/actions/routines";
+import { createRoutine, updateRoutine } from "@/actions/routines";
 import { ExerciseLink } from "@/components/catalog/exercise-link";
 import { useExerciseSheet } from "@/components/catalog/exercise-sheet";
 import { WEEKDAYS_MONDAY_FIRST } from "@/lib/week";
@@ -10,6 +10,12 @@ import {
   estimateRoutineDurationMinutes,
   countTotalSets,
 } from "@/lib/routine-metrics";
+import {
+  EXERCISE_CATEGORIES,
+  classifyExerciseCategory,
+  CATEGORY_MAP,
+  type ExerciseCategoryId,
+} from "@/core/catalog/exercise-categories";
 import {
   Plus,
   Trash2,
@@ -26,6 +32,7 @@ interface ExerciseOption {
   id: string;
   namePt: string;
   nameEn: string | null;
+  modalityCode?: string | null;
   secondaryMuscles: string[] | null;
 }
 
@@ -41,42 +48,96 @@ interface RoutineItem {
 }
 
 const SET_TYPE_LABELS: Record<string, string> = {
-  effective: "Série válida",
-  warmup: "Aquecimento",
-  feeder: "Reconhecimento",
-  backoff: "Back-off",
+  effective: "Série principal",
+  warmup: "Aquecimento leve",
+  feeder: "Preparação (carga média)",
+  backoff: "Série final (carga reduzida)",
 };
+
+interface InitialRoutineData {
+  id: string;
+  title: string;
+  description: string;
+  modalityCode: string;
+  dayOfWeek: number | null;
+  exercises: RoutineItem[];
+}
 
 export function RoutineBuilder({
   availableExercises,
+  initialRoutine,
 }: {
   availableExercises: ExerciseOption[];
+  initialRoutine?: InitialRoutineData;
 }) {
   const router = useRouter();
   const { open: openExerciseSheet } = useExerciseSheet();
   const [isPending, startTransition] = useTransition();
 
-  const [title, setTitle] = useState("");
-  const [description, setDescription] = useState("");
-  const [modalityCode, setModalityCode] = useState("strength");
-  const [dayOfWeek, setDayOfWeek] = useState<number | null>(null);
-  const [selectedItems, setSelectedItems] = useState<RoutineItem[]>([]);
+  const [title, setTitle] = useState(initialRoutine?.title || "");
+  const [description, setDescription] = useState(
+    initialRoutine?.description || ""
+  );
+  const [modalityCode, setModalityCode] = useState(
+    initialRoutine?.modalityCode || "strength"
+  );
+  const [dayOfWeek, setDayOfWeek] = useState<number | null>(
+    initialRoutine?.dayOfWeek ?? null
+  );
+  const [selectedItems, setSelectedItems] = useState<RoutineItem[]>(
+    initialRoutine?.exercises || []
+  );
   const [searchQuery, setSearchQuery] = useState("");
+  const [activeCategory, setActiveCategory] = useState<ExerciseCategoryId | "all">("all");
   const [selectedExerciseId, setSelectedExerciseId] = useState(
     availableExercises[0]?.id || ""
   );
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
-  const filteredCatalog = availableExercises.filter((ex) => {
-    if (!searchQuery.trim()) return true;
-    const q = searchQuery.toLowerCase();
-    return (
-      ex.namePt.toLowerCase().includes(q) ||
-      (ex.nameEn && ex.nameEn.toLowerCase().includes(q)) ||
-      (ex.secondaryMuscles &&
-        ex.secondaryMuscles.some((m) => m.toLowerCase().includes(q)))
-    );
-  });
+  const exercisesWithCategory = useMemo(
+    () =>
+      availableExercises.map((ex) => ({
+        ...ex,
+        categoryId: classifyExerciseCategory(ex),
+      })),
+    [availableExercises]
+  );
+
+  const categoryCounts = useMemo(() => {
+    const counts: Record<string, number> = { all: exercisesWithCategory.length };
+    for (const ex of exercisesWithCategory) {
+      counts[ex.categoryId] = (counts[ex.categoryId] || 0) + 1;
+    }
+    return counts;
+  }, [exercisesWithCategory]);
+
+  const filteredCatalog = useMemo(() => {
+    return exercisesWithCategory.filter((ex) => {
+      if (activeCategory !== "all" && ex.categoryId !== activeCategory) {
+        return false;
+      }
+      if (!searchQuery.trim()) return true;
+      const q = searchQuery.toLowerCase();
+      return (
+        ex.namePt.toLowerCase().includes(q) ||
+        (ex.nameEn && ex.nameEn.toLowerCase().includes(q)) ||
+        CATEGORY_MAP[ex.categoryId].label.toLowerCase().includes(q) ||
+        (ex.secondaryMuscles &&
+          ex.secondaryMuscles.some((m) => m.toLowerCase().includes(q)))
+      );
+    });
+  }, [exercisesWithCategory, activeCategory, searchQuery]);
+
+  const groupedCatalog = useMemo(() => {
+    const map = new Map<ExerciseCategoryId, typeof filteredCatalog>();
+    for (const cat of EXERCISE_CATEGORIES) {
+      const items = filteredCatalog.filter((e) => e.categoryId === cat.id);
+      if (items.length > 0) {
+        map.set(cat.id, items);
+      }
+    }
+    return map;
+  }, [filteredCatalog]);
 
   const addExerciseById = (id: string) => {
     const ex = availableExercises.find((e) => e.id === id);
@@ -137,7 +198,7 @@ export function RoutineBuilder({
 
     setErrorMessage(null);
     startTransition(async () => {
-      await createRoutine({
+      const payload = {
         title: title.trim(),
         description: description.trim(),
         modalityCode,
@@ -151,9 +212,16 @@ export function RoutineBuilder({
           restSeconds: Number(item.restSeconds) || 90,
           setType: item.setType,
         })),
-      });
+      };
+
+      if (initialRoutine?.id) {
+        await updateRoutine(initialRoutine.id, payload);
+      } else {
+        await createRoutine(payload);
+      }
 
       router.push("/treinos");
+      router.refresh();
     });
   };
 
@@ -250,14 +318,14 @@ export function RoutineBuilder({
 
         <div className="flex flex-col gap-1.5">
           <label htmlFor="routine-notes" className="t-aux text-foreground font-semibold">
-            Diretrizes Técnicas / Objetivo (Opcional)
+            Objetivo ou Lembretes da Ficha (Opcional)
           </label>
           <textarea
             id="routine-notes"
             rows={2}
             value={description}
             onChange={(e) => setDescription(e.target.value)}
-            placeholder="Ex: Priorizar cadência controlada 3-1-1 no primeiro movimento; manter RIR 1-2."
+            placeholder="Ex: Fazer os movimentos de forma controlada, mantendo boa postura e respiração constante."
             className="input h-auto py-2.5 text-sm resize-y"
           />
         </div>
@@ -287,73 +355,134 @@ export function RoutineBuilder({
           </div>
         </div>
 
-        {/* Barra de busca + seletor rápido */}
-        <div className="grid grid-cols-1 sm:grid-cols-12 gap-2.5 p-3 rounded-xl bg-foreground/[0.03] border border-line">
-          <div className="sm:col-span-5 relative">
-            <Search
-              size={15}
-              className="absolute left-3 top-1/2 -translate-y-1/2 text-muted pointer-events-none"
-            />
-            <input
-              type="search"
-              value={searchQuery}
-              onChange={(e) => {
-                const q = e.target.value;
-                setSearchQuery(q);
-                const firstMatch = availableExercises.find(
-                  (ex) =>
-                    ex.namePt.toLowerCase().includes(q.toLowerCase()) ||
-                    (ex.secondaryMuscles?.[0] || "")
-                      .toLowerCase()
-                      .includes(q.toLowerCase())
-                );
-                if (firstMatch) setSelectedExerciseId(firstMatch.id);
+        {/* Abas de Categorias de Exercícios + Barra de Busca */}
+        <div className="flex flex-col gap-3 p-3.5 rounded-xl bg-foreground/[0.03] border border-line">
+          <div
+            role="tablist"
+            aria-label="Categorias de exercícios"
+            className="flex items-center gap-1.5 overflow-x-auto no-scrollbar pb-1"
+          >
+            <button
+              type="button"
+              role="tab"
+              aria-selected={activeCategory === "all"}
+              onClick={() => {
+                setActiveCategory("all");
+                if (exercisesWithCategory[0]) {
+                  setSelectedExerciseId(exercisesWithCategory[0].id);
+                }
               }}
-              placeholder="Filtrar catálogo por nome ou músculo..."
-              aria-label="Filtrar catálogo de exercícios"
-              className="input h-10 pl-9 text-xs"
-            />
+              className={`h-8 px-3 rounded-lg text-xs font-mono shrink-0 transition-colors cursor-pointer ${
+                activeCategory === "all"
+                  ? "bg-foreground text-background font-semibold"
+                  : "bg-surface border border-line text-muted hover:text-foreground"
+              }`}
+            >
+              Todas ({categoryCounts.all || 0})
+            </button>
+
+            {EXERCISE_CATEGORIES.filter((c) => (categoryCounts[c.id] || 0) > 0).map(
+              (cat) => {
+                const selected = activeCategory === cat.id;
+                return (
+                  <button
+                    key={cat.id}
+                    type="button"
+                    role="tab"
+                    aria-selected={selected}
+                    onClick={() => {
+                      setActiveCategory(cat.id);
+                      const firstInCat = exercisesWithCategory.find(
+                        (e) => e.categoryId === cat.id
+                      );
+                      if (firstInCat) setSelectedExerciseId(firstInCat.id);
+                    }}
+                    className={`h-8 px-3 rounded-lg text-xs font-mono shrink-0 transition-colors cursor-pointer ${
+                      selected
+                        ? "bg-lima text-grafite font-semibold"
+                        : "bg-surface border border-line text-muted hover:text-foreground"
+                    }`}
+                  >
+                    {cat.shortLabel} ({categoryCounts[cat.id] || 0})
+                  </button>
+                );
+              }
+            )}
           </div>
 
-          <div className="sm:col-span-5">
-            <select
-              value={selectedExerciseId}
-              onChange={(e) => setSelectedExerciseId(e.target.value)}
-              aria-label="Selecionar exercício do catálogo"
-              className="input h-10 text-xs"
-            >
-              {filteredCatalog.length === 0 ? (
-                <option value="">Nenhum movimento encontrado</option>
-              ) : (
-                filteredCatalog.map((ex) => (
-                  <option key={ex.id} value={ex.id}>
-                    {ex.namePt} · {ex.secondaryMuscles?.[0] || "Geral"}
-                  </option>
-                ))
-              )}
-            </select>
-          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-12 gap-2.5">
+            <div className="sm:col-span-5 relative">
+              <Search
+                size={15}
+                className="absolute left-3 top-1/2 -translate-y-1/2 text-muted pointer-events-none"
+              />
+              <input
+                type="search"
+                value={searchQuery}
+                onChange={(e) => {
+                  const q = e.target.value;
+                  setSearchQuery(q);
+                  const firstMatch = exercisesWithCategory.find(
+                    (ex) =>
+                      (activeCategory === "all" ||
+                        ex.categoryId === activeCategory) &&
+                      (ex.namePt.toLowerCase().includes(q.toLowerCase()) ||
+                        (ex.secondaryMuscles?.[0] || "")
+                          .toLowerCase()
+                          .includes(q.toLowerCase()))
+                  );
+                  if (firstMatch) setSelectedExerciseId(firstMatch.id);
+                }}
+                placeholder="Filtrar exercícios nesta categoria..."
+                aria-label="Filtrar catálogo de exercícios"
+                className="input h-10 pl-9 text-xs"
+              />
+            </div>
 
-          <div className="sm:col-span-2 flex gap-1.5">
-            <button
-              type="button"
-              disabled={!selectedExerciseId || filteredCatalog.length === 0}
-              onClick={() => openExerciseSheet(selectedExerciseId)}
-              aria-label="Ver ficha técnica do exercício selecionado"
-              title="Ver passo a passo e vídeo"
-              className="btn btn-ghost h-10 w-10 p-0 shrink-0"
-            >
-              <Info size={16} />
-            </button>
-            <button
-              type="button"
-              disabled={!selectedExerciseId || filteredCatalog.length === 0}
-              onClick={() => addExerciseById(selectedExerciseId)}
-              className="btn btn-primary flex-1 h-10 text-xs"
-            >
-              <Plus size={16} />
-              <span>Inserir</span>
-            </button>
+            <div className="sm:col-span-5">
+              <select
+                value={selectedExerciseId}
+                onChange={(e) => setSelectedExerciseId(e.target.value)}
+                aria-label="Selecionar exercício do catálogo"
+                className="input h-10 text-xs"
+              >
+                {filteredCatalog.length === 0 ? (
+                  <option value="">Nenhum movimento nesta categoria</option>
+                ) : (
+                  Array.from(groupedCatalog.entries()).map(([catId, items]) => (
+                    <optgroup key={catId} label={CATEGORY_MAP[catId].label}>
+                      {items.map((ex) => (
+                        <option key={ex.id} value={ex.id}>
+                          {ex.namePt}
+                        </option>
+                      ))}
+                    </optgroup>
+                  ))
+                )}
+              </select>
+            </div>
+
+            <div className="sm:col-span-2 flex gap-1.5">
+              <button
+                type="button"
+                disabled={!selectedExerciseId || filteredCatalog.length === 0}
+                onClick={() => openExerciseSheet(selectedExerciseId)}
+                aria-label="Ver ficha técnica do exercício selecionado"
+                title="Ver vídeo demonstrativo e execução"
+                className="btn btn-ghost h-10 w-10 p-0 shrink-0"
+              >
+                <Info size={16} />
+              </button>
+              <button
+                type="button"
+                disabled={!selectedExerciseId || filteredCatalog.length === 0}
+                onClick={() => addExerciseById(selectedExerciseId)}
+                className="btn btn-primary flex-1 h-10 text-xs"
+              >
+                <Plus size={16} />
+                <span>Inserir</span>
+              </button>
+            </div>
           </div>
         </div>
 
@@ -479,10 +608,10 @@ export function RoutineBuilder({
                       onChange={(e) => handleUpdate(idx, "setType", e.target.value)}
                       className="input h-10 text-xs"
                     >
-                      <option value="effective">Válida</option>
+                      <option value="effective">Principal (Normal)</option>
                       <option value="warmup">Aquecimento</option>
-                      <option value="feeder">Feeder</option>
-                      <option value="backoff">Back-off</option>
+                      <option value="feeder">Preparação</option>
+                      <option value="backoff">Carga Reduzida</option>
                     </select>
                   </label>
                 </div>

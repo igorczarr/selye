@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import type { EvolutionData } from "@/actions/evolution";
 import { WEEKDAYS_MONDAY_FIRST } from "@/lib/week";
 import { ExerciseLink } from "@/components/catalog/exercise-link";
+import { DailyDecisionCard } from "@/components/home/daily-decision-card";
 import {
   Activity,
   Award,
@@ -109,7 +110,7 @@ function AcwrRing({
           {acwr.toFixed(2)}
         </span>
         <span className="text-[10px] font-mono uppercase tracking-wider text-nevoa mt-1">
-          ACWR
+          7d / 28d
         </span>
       </div>
     </div>
@@ -133,7 +134,15 @@ export function EvolutionHub({
     EvolutionData["last28DaysChart"][number] | null
   >(null);
 
-  const { acwrResult, recommendations, metrics } = data;
+  const {
+    acwrResult,
+    recoveryBudget,
+    adaptiveProfile,
+    dailyDecision,
+    todayCheckin,
+    recommendations,
+    metrics,
+  } = data;
   const headlineRec = recommendations[0];
 
   const handleTabChange = (tab: EvolutionTab) => {
@@ -249,102 +258,262 @@ export function EvolutionHub({
         })}
       </div>
 
-      {/* ================= ABA 1: HOJE (PRONTIDÃO & ACWR) ================= */}
+      {/* ================= ABA 1: HOJE (PRONTIDÃO & ACWR EM BENTO) ================= */}
       {activeTab === "hoje" && (
-        <div className="flex flex-col gap-6">
-          {/* Hero ACWR Ring + Ação Direta */}
-          <section className="rounded-2xl bg-gradient-to-br from-noite to-grafite text-osso p-6 sm:p-8 flex flex-col md:flex-row items-start md:items-center justify-between gap-6 shadow-lg">
-            <div className="flex flex-col sm:flex-row items-start sm:items-center gap-6 min-w-0">
-              <AcwrRing
-                acwr={acwrResult.acwr}
-                status={acwrResult.status}
-                statusLabel={acwrResult.statusLabel}
-              />
+        <div className="flex flex-col gap-5">
+          {/* Decisão do Dia + Check-in Matinal + Motor ML (Fase 12 & 14) */}
+          <DailyDecisionCard
+            decision={dailyDecision}
+            initialCheckin={todayCheckin}
+            adaptiveProfile={adaptiveProfile}
+          />
 
-              <div className="min-w-0 space-y-2">
-                <div className="flex flex-wrap items-center gap-2">
-                  <span className="px-2.5 py-0.5 rounded-full text-[11px] font-mono font-semibold bg-lima text-grafite">
-                    {acwrResult.statusLabel}
-                  </span>
-                  <span className="t-data text-xs text-nevoa">
-                    Faixa ideal {acwrResult.sweetSpotMin}–{acwrResult.sweetSpotMax}
-                  </span>
-                  <span className="t-data text-xs text-nevoa">
-                    · Base: {data.calibrationSessionsCount}{" "}
-                    {data.calibrationSessionsCount === 1
-                      ? "sessão (28d)"
-                      : "sessões (28d)"}
-                  </span>
+          <div className="bento-grid">
+            {/* Hero ACWR Ring + Ação Direta */}
+            <section className="col-span-12 xl:col-span-7 surface-hero p-6 sm:p-7 flex flex-col md:flex-row items-start md:items-center justify-between gap-6">
+              <div className="flex flex-col sm:flex-row items-start sm:items-center gap-5 min-w-0">
+                <AcwrRing
+                  acwr={acwrResult.acwr}
+                  status={acwrResult.status}
+                  statusLabel={acwrResult.statusLabel}
+                />
+
+                <div className="min-w-0 space-y-2">
+                  <div className="flex flex-wrap items-center gap-2">
+                    {acwrResult.statusLabel.toLowerCase() !== "início de ciclo" && (
+                      <span className="px-2.5 py-0.5 rounded-full text-[11px] font-mono font-semibold bg-lima text-grafite">
+                        {acwrResult.statusLabel}
+                      </span>
+                    )}
+                    <span className="t-data text-xs text-nevoa">
+                      Ideal {acwrResult.sweetSpotMin}–{acwrResult.sweetSpotMax}
+                    </span>
+                    <span className="t-data text-xs text-nevoa">
+                      · {data.calibrationSessionsCount}{" "}
+                      {data.calibrationSessionsCount === 1
+                        ? "sessão (28d)"
+                        : "sessões (28d)"}
+                    </span>
+                  </div>
+
+                  <h2 className="t-h2 !text-osso">
+                    {headlineRec?.title || "Calibração em andamento"}
+                  </h2>
+                  <p className="text-sm text-nevoa leading-relaxed">
+                    {headlineRec?.actionableStep ||
+                      headlineRec?.message ||
+                      "Registre suas próximas sessões para liberar recomendações personalizadas de carga."}
+                  </p>
                 </div>
-
-                <h2 className="t-h2 !text-osso">
-                  {headlineRec?.title || "Calibração em andamento"}
-                </h2>
-                <p className="text-sm text-nevoa leading-relaxed max-w-xl">
-                  {headlineRec?.actionableStep ||
-                    headlineRec?.message ||
-                    "Registre suas próximas sessões para liberar recomendações personalizadas de carga."}
-                </p>
               </div>
-            </div>
 
-            <div className="grid grid-cols-2 gap-3 w-full md:w-auto md:min-w-[230px] shrink-0">
-              <div className="p-3.5 rounded-xl bg-white/6 border border-white/10">
-                <span className="t-label !text-nevoa block">Aguda (7d)</span>
-                <p className="t-data text-xl text-osso mt-1">
-                  {acwrResult.acuteLoad}{" "}
-                  <span className="text-xs text-nevoa">UA</span>
-                </p>
+              <div className="grid grid-cols-2 gap-2.5 w-full md:w-auto md:min-w-[200px] shrink-0">
+                <div className="p-3 rounded-xl bg-white/6 border border-white/10">
+                  <span className="t-label !text-nevoa block">Esta Semana (7d)</span>
+                  <p className="t-data text-lg text-osso mt-1">
+                    {acwrResult.acuteLoad}{" "}
+                    <span className="text-[11px] text-nevoa">EA</span>
+                  </p>
+                </div>
+                <div className="p-3 rounded-xl bg-white/6 border border-white/10">
+                  <span className="t-label !text-nevoa block">Média Mensal (28d)</span>
+                  <p className="t-data text-lg text-osso mt-1">
+                    {acwrResult.chronicLoad}{" "}
+                    <span className="text-[11px] text-nevoa">EA</span>
+                  </p>
+                </div>
               </div>
-              <div className="p-3.5 rounded-xl bg-white/6 border border-white/10">
-                <span className="t-label !text-nevoa block">Crônica (28d)</span>
-                <p className="t-data text-xl text-osso mt-1">
-                  {acwrResult.chronicLoad}{" "}
-                  <span className="text-xs text-nevoa">UA</span>
+            </section>
+
+            {/* Indicadores Fisiológicos 2×2 ao lado do Hero em telas largas */}
+            <section className="col-span-12 xl:col-span-5 grid grid-cols-2 gap-3">
+              <div className="card p-4 flex flex-col justify-between gap-2" title="Indica se seus dias estão variados ou repetitivos">
+                <span className="t-label">Variedade da Rotina</span>
+                <p className="t-data text-2xl text-foreground">
+                  {acwrResult.monotony}
                 </p>
+                <span className="t-aux text-muted">Ideal &lt; 2,0 (variar estímulos)</span>
               </div>
-            </div>
-          </section>
 
-          {/* Indicadores Fisiológicos sem Duplicação */}
-          <section className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-            <div className="card p-4 flex flex-col justify-between gap-2">
-              <span className="t-label">Monotonia (7d)</span>
-              <p className="t-data text-2xl text-foreground">
-                {acwrResult.monotony}
-              </p>
-              <span className="t-aux text-muted">Ideal &lt; 2,0</span>
-            </div>
+              <div className="card p-4 flex flex-col justify-between gap-2" title="Desgaste total acumulado na semana">
+                <span className="t-label">Desgaste Semanal</span>
+                <p className="t-data text-2xl text-accent-text">
+                  {acwrResult.strain.toLocaleString("pt-BR")}
+                </p>
+                <span className="t-aux text-muted">Esforço acumulado na semana</span>
+              </div>
 
-            <div className="card p-4 flex flex-col justify-between gap-2">
-              <span className="t-label">Tensão (Strain)</span>
-              <p className="t-data text-2xl text-accent-text">
-                {acwrResult.strain.toLocaleString("pt-BR")}
-              </p>
-              <span className="t-aux text-muted">Carga × Monotonia</span>
-            </div>
+              <div className="card p-4 flex flex-col justify-between gap-2">
+                <span className="t-label">Intensidade Média (7d)</span>
+                <p className="t-data text-2xl text-foreground">
+                  {data.averageRpe > 0 ? `Nota ${data.averageRpe}/10` : "—"}
+                </p>
+                <span className="t-aux text-muted">Percepção de esforço (1 a 10)</span>
+              </div>
 
-            <div className="card p-4 flex flex-col justify-between gap-2">
-              <span className="t-label">Esforço Médio (7d)</span>
-              <p className="t-data text-2xl text-foreground">
-                {data.averageRpe > 0 ? `RPE ${data.averageRpe}` : "—"}
-              </p>
-              <span className="t-aux text-muted">Escala Foster (1–10)</span>
-            </div>
+              <div className="card p-4 flex flex-col justify-between gap-2">
+                <span className="t-label">Sequência Ativa</span>
+                <p className="t-data text-2xl text-foreground">
+                  {data.consecutiveDays}{" "}
+                  <span className="text-xs font-sans text-muted">
+                    {data.consecutiveDays === 1 ? "dia" : "dias"}
+                  </span>
+                </p>
+                <span className="t-aux text-muted">Sem pausa intercalada</span>
+              </div>
+            </section>
+          </div>
 
-            <div className="card p-4 flex flex-col justify-between gap-2">
-              <span className="t-label">Sequência Ativa</span>
-              <p className="t-data text-2xl text-foreground">
-                {data.consecutiveDays}{" "}
-                <span className="text-xs font-sans text-muted">
-                  {data.consecutiveDays === 1 ? "dia" : "dias"}
+          {/* Reserva de Energia Adaptativa Pessoal (EA) */}
+          <section className="card p-5 sm:p-6 flex flex-col gap-4">
+            <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-3">
+              <div>
+                <span className="t-label !text-accent-text">
+                  Fisiologia Personalizada · Energia Adaptativa (EA)
                 </span>
-              </p>
-              <span className="t-aux text-muted">Sem pausa intercalada</span>
+                <h2 className="t-h2 mt-0.5">
+                  Reserva Adaptativa Pessoal (Balanço Bidirecional 7d)
+                </h2>
+                <p className="text-xs text-muted mt-1">
+                  O Selye acompanha sua curva de recuperação ({adaptiveProfile.recoveryVelocityMultiplier.toFixed(2)}×) e contabiliza tanto o consumo dos treinos (<strong>-EA</strong>) quanto a recarga dos hábitos regenerativos (<strong>+EA</strong>).
+                </p>
+              </div>
+              <div className="flex flex-wrap items-center gap-2 shrink-0">
+                <span className="px-3 py-1 rounded-full text-xs font-mono font-semibold bg-foreground/8 text-foreground">
+                  {adaptiveProfile.learningStageLabel}
+                </span>
+                <span className="px-3 py-1 rounded-full text-xs font-mono font-semibold bg-lima text-grafite">
+                  {recoveryBudget.budgetStatusLabel}
+                </span>
+              </div>
             </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+              <div className="rounded-xl border border-line p-4 bg-foreground/[0.02]">
+                <span className="t-label">Capacidade Pessoal</span>
+                <p className="t-data text-2xl font-semibold text-foreground mt-1">
+                  {adaptiveProfile.personalCapacityEa.toLocaleString("pt-BR")}{" "}
+                  <span className="text-xs font-mono text-muted">EA</span>
+                </p>
+                <span className="t-aux text-muted">
+                  Teto semanal calibrado ao seu perfil
+                </span>
+              </div>
+
+              <div className="rounded-xl border border-line p-4 bg-foreground/[0.02]">
+                <span className="t-label">Consumo Bruto (7d)</span>
+                <p className="t-data text-2xl font-semibold text-foreground mt-1">
+                  -{adaptiveProfile.trainingDrainEa.toLocaleString("pt-BR")}{" "}
+                  <span className="text-xs font-mono text-muted">EA</span>
+                </p>
+                <span className="t-aux text-muted">
+                  Treinos, jogos e desgaste acumulado
+                </span>
+              </div>
+
+              <div className="rounded-xl border border-lima/50 p-4 bg-lima/10">
+                <span className="t-label !text-accent-text">Recarga Biológica (+EA)</span>
+                <p className="t-data text-2xl font-semibold text-accent-text mt-1">
+                  +{adaptiveProfile.recoveryRechargeEa.toLocaleString("pt-BR")}{" "}
+                  <span className="text-xs font-mono text-muted">EA</span>
+                </p>
+                <span className="t-aux text-muted">
+                  Sono restaurador, mobilidade e supercompensação
+                </span>
+              </div>
+
+              <div className="rounded-xl border border-line p-4 bg-foreground/[0.02]">
+                <span className="t-label">Reserva Adaptativa Livre</span>
+                <p className="t-data text-2xl font-semibold text-foreground mt-1">
+                  {adaptiveProfile.availableReserveEa.toLocaleString("pt-BR")}{" "}
+                  <span className="text-xs font-mono text-muted">EA</span>
+                </p>
+                <span className="t-aux text-muted">
+                  {adaptiveProfile.reservePercent}% de reserva disponível hoje
+                </span>
+              </div>
+            </div>
+
+            {/* Barra de Reserva Adaptativa */}
+            <div className="flex flex-col gap-1.5">
+              <div className="w-full h-3 rounded-full bg-foreground/10 overflow-hidden">
+                <div
+                  className={`h-full rounded-full transition-all duration-500 ${
+                    recoveryBudget.budgetStatus === "exceeded"
+                      ? "bg-[#e57373]"
+                      : recoveryBudget.budgetStatus === "near_limit"
+                        ? "bg-[#e0b354]"
+                        : "bg-lima"
+                  }`}
+                  style={{
+                    width: `${Math.min(100, Math.max(6, adaptiveProfile.reservePercent))}%`,
+                  }}
+                />
+              </div>
+            </div>
+
+            {/* Traços Fisiológicos Identificados no Perfil */}
+            {adaptiveProfile.learnedTraits.length > 0 && (
+              <div className="pt-2 border-t border-line flex flex-col gap-2.5">
+                <span className="t-label">
+                  Leitura Fisiológica do seu Ritmo
+                </span>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-2.5">
+                  {adaptiveProfile.learnedTraits.map((trait) => (
+                    <div
+                      key={trait.id}
+                      className="rounded-xl border border-line p-3.5 bg-surface flex flex-col gap-1"
+                    >
+                      <span className="text-xs font-semibold text-foreground">
+                        {trait.labelPt}
+                      </span>
+                      <p className="text-[11px] text-muted leading-relaxed">
+                        {trait.detailPt}
+                      </p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Distribuição do Esforço por Modalidade */}
+            {recoveryBudget.modalitiesBreakdown.length > 0 && (
+              <div className="pt-2 border-t border-line flex flex-col gap-2.5">
+                <span className="t-label">
+                  Distribuição do Esforço por Modalidade (Últimos 7 dias)
+                </span>
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2.5">
+                  {recoveryBudget.modalitiesBreakdown.map((mod) => (
+                    <div
+                      key={mod.modalityCode}
+                      className="rounded-xl border border-line p-3.5 bg-surface flex items-center justify-between gap-3"
+                    >
+                      <div className="min-w-0">
+                        <p className="text-xs font-semibold text-foreground truncate">
+                          {mod.labelPt}
+                        </p>
+                        <p className="t-aux text-muted">
+                          {mod.sessionsCount}{" "}
+                          {mod.sessionsCount === 1 ? "sessão" : "sessões"} ·{" "}
+                          {mod.totalMinutes} min · Fator {mod.factor.toFixed(2)}×
+                        </p>
+                      </div>
+                      <div className="text-right shrink-0">
+                        <p className="t-data text-sm font-semibold text-foreground">
+                          -{mod.totalLoadUa} EA
+                        </p>
+                        <span className="text-[11px] font-mono text-accent-text">
+                          {mod.sharePercent}%
+                        </span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
           </section>
 
-          {/* Recomendações Explicáveis */}
+          {/* Recomendações Explicáveis em grade 2 colunas no desktop */}
           <section className="card p-5 sm:p-6 flex flex-col gap-4">
             <div className="flex flex-wrap items-center justify-between gap-2">
               <div className="flex items-center gap-2.5">
@@ -352,16 +521,16 @@ export function EvolutionHub({
                   <Cpu size={16} />
                 </div>
                 <div>
-                  <span className="t-label">Orientação Explicável</span>
+                  <span className="t-label">Orientação Explicável (Tendência 7d vs 28d)</span>
                   <h2 className="t-h3">Ajustes Recomendados</h2>
                 </div>
               </div>
               <span className="chip text-[11px]">
-                Informativo · Não substitui avaliação clínica
+                Indicador contextual de carga · Não prevê lesões nem substitui avaliação clínica
               </span>
             </div>
 
-            <div className="flex flex-col gap-3">
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
               {recommendations.map((rec) => {
                 const open = Boolean(expandedRationale[rec.id]);
                 return (
@@ -430,10 +599,10 @@ export function EvolutionHub({
         </div>
       )}
 
-      {/* ================= ABA 2: CARGA (GRÁFICO 28 DIAS + HISTÓRICO) ================= */}
+      {/* ================= ABA 2: CARGA (GRÁFICO 28 DIAS + HISTÓRICO LADO A LADO) ================= */}
       {activeTab === "carga" && (
-        <div className="flex flex-col gap-6">
-          <section className="card p-5 sm:p-6 flex flex-col gap-4">
+        <div className="bento-grid items-start">
+          <section className="col-span-12 xl:col-span-7 card p-5 sm:p-6 flex flex-col gap-4">
             <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-2">
               <div>
                 <span className="t-label">Série Temporal (28 dias)</span>
@@ -443,12 +612,12 @@ export function EvolutionHub({
                 {hoveredDay ? (
                   <span className="text-foreground font-semibold">
                     {hoveredDay.dayName} {hoveredDay.shortDate}:{" "}
-                    {hoveredDay.load} UA
+                    {hoveredDay.load} EA
                   </span>
                 ) : (
                   <span>
-                    Acumulado 7d: {acwrResult.weeklyLoadTotal} UA · Média 28d:{" "}
-                    {acwrResult.chronicLoad} UA
+                    Acumulado 7d: {acwrResult.weeklyLoadTotal} EA · Média 28d:{" "}
+                    {acwrResult.chronicLoad} EA
                   </span>
                 )}
               </div>
@@ -527,7 +696,7 @@ export function EvolutionHub({
           </section>
 
           {/* Sessões no Período */}
-          <section className="card p-5 sm:p-6 flex flex-col gap-4">
+          <section className="col-span-12 xl:col-span-5 card p-5 sm:p-6 flex flex-col gap-4">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
               <div>
                 <span className="t-label">Registro de Sessões</span>
@@ -582,8 +751,10 @@ export function EvolutionHub({
                         {w.title}
                       </p>
                       <p className="t-aux text-muted">
-                        RPE {w.rpeSession || 8}/10 ·{" "}
-                        {w.status === "completed" ? "Concluído" : "Em andamento"}
+                        {w.modalityLabel} · RPE {w.rpeSession || 8}/10 ·{" "}
+                        <span className="font-mono text-accent-text font-semibold">
+                          -{w.loadUa} EA
+                        </span>
                       </p>
                     </div>
                     <span className="t-data text-xs text-muted shrink-0">
@@ -599,10 +770,10 @@ export function EvolutionHub({
         </div>
       )}
 
-      {/* ================= ABA 3: FORÇA (VOLUME & PRS CLICÁVEIS) ================= */}
+      {/* ================= ABA 3: FORÇA (VOLUME & PRS LADO A LADO) ================= */}
       {activeTab === "forca" && (
-        <div className="flex flex-col gap-6">
-          <section className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+        <div className="bento-grid items-start">
+          <section className="col-span-12 xl:col-span-4 grid grid-cols-1 sm:grid-cols-3 xl:grid-cols-1 gap-3">
             <div className="card p-5">
               <span className="t-label">Volume (Últimos 28d)</span>
               <p className="t-data text-2xl mt-1 text-foreground">
@@ -632,7 +803,7 @@ export function EvolutionHub({
             </div>
           </section>
 
-          <section className="card p-5 sm:p-6 flex flex-col gap-4">
+          <section className="col-span-12 xl:col-span-8 card p-5 sm:p-6 flex flex-col gap-4">
             <div className="flex justify-between items-center">
               <div>
                 <span className="t-label !text-accent-text">Força Aplicada</span>
@@ -655,7 +826,7 @@ export function EvolutionHub({
                 </Link>
               </div>
             ) : (
-              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
                 {data.personalRecords.map((pr) => (
                   <div
                     key={pr.exerciseId}
@@ -688,10 +859,10 @@ export function EvolutionHub({
         </div>
       )}
 
-      {/* ================= ABA 4: CONSISTÊNCIA (HEATMAP SEG→DOM & STREAKS) ================= */}
+      {/* ================= ABA 4: CONSISTÊNCIA (HEATMAP + KPIS LADO A LADO) ================= */}
       {activeTab === "consistencia" && (
-        <div className="flex flex-col gap-6">
-          <section className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+        <div className="bento-grid items-start">
+          <section className="col-span-12 xl:col-span-5 grid grid-cols-2 gap-3">
             <div className="card p-4">
               <span className="t-label">Adesão (28d)</span>
               <p className="t-data text-2xl mt-1 text-foreground">
@@ -729,7 +900,7 @@ export function EvolutionHub({
             </div>
           </section>
 
-          <section className="card p-5 sm:p-6 flex flex-col gap-4">
+          <section className="col-span-12 xl:col-span-7 card p-5 sm:p-6 flex flex-col gap-4">
             <div>
               <span className="t-label">Calendário Biológico (Seg → Dom)</span>
               <h2 className="t-h2 mt-0.5">Mapa de Constância (5 Semanas)</h2>

@@ -5,6 +5,7 @@ import * as schema from "@/db/schema";
 import { eq, desc, and, or, ilike, ne, inArray } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { getOrCreateDemoUser } from "./workout";
+import { dispatchSmartNotification } from "./notifications";
 
 /**
  * Descoberta de Atletas (§11.1 e §11.4 do briefing)
@@ -151,6 +152,15 @@ export async function followUser(targetUserId: string) {
       followerId: currentUser.id,
       followingId: targetUserId,
       status: "accepted",
+    });
+
+    await dispatchSmartNotification({
+      recipientUserId: targetUserId,
+      eventType: "new_follower",
+      params: {
+        actorName: currentUser.name,
+        actorUsername: currentUser.username,
+      },
     });
   }
 

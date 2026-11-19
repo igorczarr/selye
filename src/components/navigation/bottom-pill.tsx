@@ -5,6 +5,7 @@ import { usePathname } from "next/navigation";
 import {
   Home,
   Dumbbell,
+  CalendarDays,
   Activity,
   Users,
   User,
@@ -30,6 +31,13 @@ const PILL_ITEMS = [
     href: "/treinos",
     matchPrefixes: ["/treinos"],
     icon: Dumbbell,
+  },
+  {
+    id: "calendario",
+    label: "Calendário",
+    href: "/calendario",
+    matchPrefixes: ["/calendario"],
+    icon: CalendarDays,
   },
   {
     id: "evolucao",

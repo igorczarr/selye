@@ -4,11 +4,13 @@ import { useState, useEffect, useMemo, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { useExerciseSheet } from "@/components/catalog/exercise-sheet";
 import type { GlobalSearchSnapshot } from "@/actions/search";
+import { ModalPortal } from "@/components/ui/modal-portal";
 import {
   Search,
   X,
   Home,
   Dumbbell,
+  CalendarDays,
   Activity,
   BarChart3,
   Users,
@@ -116,10 +118,22 @@ export function CommandPalette({
         },
       },
       {
+        id: "nav-calendario",
+        group: "Navegação",
+        title: "Calendário Energético & Planejamento de Metas",
+        subtitle: "Ciclo do corpo, curva de EA, compromissos e preparação para competições",
+        keywords: "calendario ciclo energia meta competicao taper planejamento agenda",
+        icon: CalendarDays,
+        onSelect: () => {
+          router.push("/calendario");
+          onClose();
+        },
+      },
+      {
         id: "nav-evolucao",
         group: "Navegação",
-        title: "Evolução · Prontidão & Carga (ACWR)",
-        subtitle: "Performance, razão aguda:crônica e recomendações",
+        title: "Evolução · Ritmo, Energia & Força",
+        subtitle: "Bateria do corpo (EA), recordes pessoais e consistência",
         keywords: "evolucao performance acwr carga fadiga",
         icon: Activity,
         onSelect: () => {
@@ -312,16 +326,14 @@ export function CommandPalette({
   const groups = Array.from(new Set(filteredItems.map((i) => i.group)));
 
   return (
-    <div
-      role="dialog"
-      aria-modal="true"
-      aria-label="Busca rápida e paleta de comandos"
-      className="fixed inset-0 z-50 bg-noite/70 backdrop-blur-sm flex items-start justify-center p-4 sm:pt-[10vh]"
-      onClick={(e) => {
-        if (e.target === e.currentTarget) onClose();
-      }}
+    <ModalPortal
+      open={open}
+      onClose={onClose}
+      ariaLabel="Busca rápida e paleta de comandos"
+      align="top"
+      maxWidthClass="max-w-xl"
     >
-      <div className="card w-full max-w-xl bg-surface border border-line shadow-2xl overflow-hidden flex flex-col max-h-[80vh]">
+      <div className="card w-full bg-surface border border-line shadow-2xl overflow-hidden flex flex-col max-h-[80vh]">
         {/* Campo de Busca */}
         <div className="flex items-center gap-3 px-4 py-3.5 border-b border-line">
           <Search size={17} className="text-muted shrink-0" />
@@ -433,6 +445,6 @@ export function CommandPalette({
           <span>⌘K / Ctrl+K</span>
         </div>
       </div>
-    </div>
+    </ModalPortal>
   );
 }

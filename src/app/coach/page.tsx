@@ -40,7 +40,7 @@ export default function CoachPage() {
   return (
     <div className="min-h-screen bg-background text-foreground flex flex-col pb-24">
       <Navbar />
-      <main className="max-w-5xl mx-auto px-4 sm:px-6 py-8 flex-1 w-full">
+      <main className="selye-container py-6 flex-1">
         <Suspense fallback={<CoachSkeleton />}>
           <CoachLoader />
         </Suspense>

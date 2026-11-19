@@ -4,7 +4,7 @@ import { db } from "@/db";
 import * as schema from "@/db/schema";
 import { eq, desc } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
-import { getOrCreateDemoUser } from "./workout";
+import { getOrCreateDemoUser, getDashboardData } from "./workout";
 
 import { getUserAchievements, getAchievementsCatalog } from "./achievements";
 
@@ -48,6 +48,23 @@ export async function getProfileData() {
   const userAchievements = await getUserAchievements(user.id);
   const achievementsCatalog = await getAchievementsCatalog();
 
+  let eaCondition = {
+    reservePercent: 82,
+    availableReserveEa: 1455,
+    personalCapacityEa: 1800,
+  };
+  try {
+    const dash = await getDashboardData();
+    const ap = dash.performanceSummary.adaptiveProfile;
+    eaCondition = {
+      reservePercent: ap.reservePercent,
+      availableReserveEa: ap.availableReserveEa,
+      personalCapacityEa: ap.personalCapacityEa,
+    };
+  } catch {
+    // fallback seguro
+  }
+
   return {
     user,
     profile,
@@ -57,6 +74,7 @@ export async function getProfileData() {
     streak: streak || null,
     userAchievements,
     achievementsCatalog,
+    eaCondition,
   };
 }
 

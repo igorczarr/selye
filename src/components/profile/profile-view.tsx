@@ -1,11 +1,13 @@
 "use client";
 
 import { useState, useTransition } from "react";
+import { useUser } from "@clerk/nextjs";
 import {
   logBodyMetric,
   updateFavoriteSports,
   exportUserData,
 } from "@/actions/profile";
+import { ConditionArrowBadge } from "@/components/ui/condition-arrow-badge";
 import {
   Lock,
   Download,
@@ -26,6 +28,11 @@ interface ProfileViewProps {
     streak?: any;
     userAchievements?: any[];
     achievementsCatalog?: any[];
+    eaCondition?: {
+      reservePercent: number;
+      availableReserveEa: number;
+      personalCapacityEa: number;
+    };
   };
 }
 
@@ -44,7 +51,10 @@ const CATEGORY_LABELS: Record<string, string> = {
 };
 
 export function ProfileView({ data }: ProfileViewProps) {
+  const { user: clerkUser } = useUser();
   const [isPending, startTransition] = useTransition();
+  const avatarSrc = clerkUser?.imageUrl || data.user.avatarUrl || null;
+  const displayName = clerkUser?.fullName || data.user.name || "Atleta";
 
   const [metricType, setMetricType] = useState("weight");
   const [metricValue, setMetricValue] = useState("");
@@ -98,15 +108,33 @@ export function ProfileView({ data }: ProfileViewProps) {
   };
 
   return (
-    <div className="flex flex-col gap-6 max-w-3xl mx-auto w-full fade-up">
+    <div className="flex flex-col gap-6 w-full fade-up">
       {/* Cabeçalho do Perfil */}
       <section className="card p-6 sm:p-8 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div className="flex items-center gap-4">
-          <div className="w-16 h-16 rounded-full bg-foreground text-background flex items-center justify-center font-bold text-2xl shrink-0">
-            {data.user.name?.[0] || "A"}
+          <div className="relative shrink-0">
+            <div className="w-16 h-16 rounded-full bg-foreground text-background flex items-center justify-center font-bold text-2xl overflow-hidden border-2 border-line shadow-md">
+              {avatarSrc ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img
+                  src={avatarSrc}
+                  alt={`Foto de perfil de ${displayName}`}
+                  className="w-full h-full object-cover"
+                />
+              ) : (
+                <span>{displayName[0] || "A"}</span>
+              )}
+            </div>
+            <ConditionArrowBadge
+              reservePercent={data.eaCondition?.reservePercent ?? 82}
+              availableReserveEa={data.eaCondition?.availableReserveEa}
+              personalCapacityEa={data.eaCondition?.personalCapacityEa}
+              size="md"
+              className="absolute -bottom-1 -right-1 z-10"
+            />
           </div>
           <div>
-            <h1 className="t-h1">{data.user.name}</h1>
+            <h1 className="t-h1">{displayName}</h1>
             <p className="t-data text-xs text-muted">
               @{data.user.username} · {data.user.email}
             </p>
@@ -116,7 +144,15 @@ export function ProfileView({ data }: ProfileViewProps) {
           </div>
         </div>
 
-        <div className="flex flex-wrap items-center gap-2 shrink-0">
+        <div className="flex flex-wrap items-center gap-2.5 shrink-0">
+          <ConditionArrowBadge
+            reservePercent={data.eaCondition?.reservePercent ?? 82}
+            availableReserveEa={data.eaCondition?.availableReserveEa}
+            personalCapacityEa={data.eaCondition?.personalCapacityEa}
+            size="md"
+            showLabel={true}
+          />
+
           {data.streak && (
             <div className="px-3.5 py-2 rounded-xl bg-lima/25 border border-profundo/30 flex items-center gap-2">
               <Flame size={16} className="text-accent-text" />
@@ -142,8 +178,11 @@ export function ProfileView({ data }: ProfileViewProps) {
         </div>
       </section>
 
-      {/* Conquistas & Marcos Esportivos */}
-      <section className="card p-6 flex flex-col gap-4">
+      {/* Grade Bento do Perfil: Esquerda (Conquistas + Modalidades) · Direita (Biometria Privada) */}
+      <div className="bento-grid items-start">
+        <div className="col-span-12 xl:col-span-7 flex flex-col gap-6">
+          {/* Conquistas & Marcos Esportivos */}
+          <section className="card p-6 flex flex-col gap-4">
         <div className="flex items-center justify-between">
           <div>
             <span className="t-label">Patrimônio de Evolução</span>
@@ -251,9 +290,10 @@ export function ProfileView({ data }: ProfileViewProps) {
           })}
         </div>
       </section>
+        </div>
 
       {/* Gestão Física e Medidas Corporais (Privado por Padrão) */}
-      <section className="card p-6 flex flex-col gap-4">
+      <section className="col-span-12 xl:col-span-5 card p-6 flex flex-col gap-4 xl:sticky xl:top-20">
         <div>
           <div className="flex items-center gap-1.5">
             <Lock size={13} className="text-accent-text" />
@@ -371,6 +411,7 @@ export function ProfileView({ data }: ProfileViewProps) {
           </div>
         </div>
       </section>
+      </div>
     </div>
   );
 }

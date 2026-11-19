@@ -1,20 +1,26 @@
 import type { Metadata, Viewport } from "next";
-import { Inter, IBM_Plex_Mono } from "next/font/google";
+import { Inter, IBM_Plex_Mono, Plus_Jakarta_Sans } from "next/font/google";
 import { ClerkProvider } from "@clerk/nextjs";
 import { ExerciseSheetProvider } from "@/components/catalog/exercise-sheet";
 import { selyeClerkPtBR } from "@/components/auth/clerk-localization-ptbr";
 import "./globals.css";
 
+const plusJakarta = Plus_Jakarta_Sans({
+  variable: "--font-display",
+  subsets: ["latin"],
+  weight: ["600", "700", "800"],
+});
+
 const inter = Inter({
   variable: "--font-inter",
   subsets: ["latin"],
-  weight: ["400", "500", "600"],
+  weight: ["400", "500", "600", "700"],
 });
 
 const plexMono = IBM_Plex_Mono({
   variable: "--font-plex-mono",
   subsets: ["latin"],
-  weight: ["400", "500"],
+  weight: ["400", "500", "600", "700"],
 });
 
 export const metadata: Metadata = {
@@ -45,13 +51,21 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
     <html
       lang="pt-BR"
       suppressHydrationWarning
-      className={`${inter.variable} ${plexMono.variable} h-full antialiased`}
+      className={`${plusJakarta.variable} ${inter.variable} ${plexMono.variable} h-full antialiased`}
     >
       <head>
         <script dangerouslySetInnerHTML={{ __html: THEME_INIT_SCRIPT }} />
       </head>
       <body className="min-h-full flex flex-col">
-        <ClerkProvider localization={selyeClerkPtBR}>
+        <ClerkProvider
+          localization={selyeClerkPtBR}
+          appearance={{
+            elements: {
+              userButtonPopoverFooter: "hidden",
+              footer: "hidden",
+            },
+          }}
+        >
           <ExerciseSheetProvider>{children}</ExerciseSheetProvider>
         </ClerkProvider>
       </body>

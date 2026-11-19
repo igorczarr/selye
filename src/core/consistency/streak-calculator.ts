@@ -84,17 +84,24 @@ export function calculateDailyStreak(uniqueDatesSortedDesc: string[], todayLocal
   return { current, best: Math.max(best, current) };
 }
 
-/** Calcula semanas consecutivas cumprindo a meta de frequência semanal (§13.2) */
+/** Calcula semanas consecutivas cumprindo a meta de frequência semanal ou protegidas por Semana Regenerativa (§13.2 & Fase 14) */
 export function calculateWeeklyStreak(
   uniqueDates: string[],
   targetDaysPerWeek: number,
-  todayLocalDate: string
+  todayLocalDate: string,
+  shieldedWeekStarts: string[] = []
 ): { current: number; best: number; weeklyBreakdown: Record<string, number> } {
   const weeksMap: Record<string, number> = {};
+  const shieldedSet = new Set(shieldedWeekStarts.map((d) => getIsoWeekStart(d)));
 
   for (const d of uniqueDates) {
     const weekStart = getIsoWeekStart(d);
     weeksMap[weekStart] = (weeksMap[weekStart] || 0) + 1;
+  }
+  for (const sw of shieldedSet) {
+    if (!(sw in weeksMap)) {
+      weeksMap[sw] = 0;
+    }
   }
 
   const currentWeekStart = getIsoWeekStart(todayLocalDate);
@@ -105,7 +112,8 @@ export function calculateWeeklyStreak(
 
   for (const w of sortedWeeks) {
     const daysInWeek = weeksMap[w];
-    if (daysInWeek >= targetDaysPerWeek) {
+    const isShielded = shieldedSet.has(w);
+    if (daysInWeek >= targetDaysPerWeek || isShielded) {
       running++;
       if (running > best) best = running;
     } else {
@@ -119,7 +127,10 @@ export function calculateWeeklyStreak(
 
   // Se na semana atual ainda não atingiu a meta, ela ainda está em aberto
   const currentWeekDays = weeksMap[currentWeekStart] || 0;
-  if (currentWeekDays >= targetDaysPerWeek) {
+  if (
+    currentWeekDays >= targetDaysPerWeek ||
+    shieldedSet.has(currentWeekStart)
+  ) {
     currentStreak++;
     cursorWeek.setUTCDate(cursorWeek.getUTCDate() - 7);
   } else {
@@ -130,7 +141,7 @@ export function calculateWeeklyStreak(
   while (true) {
     const wStr = cursorWeek.toISOString().split("T")[0];
     const days = weeksMap[wStr] || 0;
-    if (days >= targetDaysPerWeek) {
+    if (days >= targetDaysPerWeek || shieldedSet.has(wStr)) {
       currentStreak++;
       cursorWeek.setUTCDate(cursorWeek.getUTCDate() - 7);
     } else {

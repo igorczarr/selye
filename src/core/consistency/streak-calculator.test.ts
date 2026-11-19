@@ -72,5 +72,10 @@ describe("Consistency & Streak Engine (Briefing §13 e §28)", () => {
     assert.strictEqual(result.current, 1);
     // Melhor sequência histórica foi de 3 semanas (semanas 1, 2 e 3)
     assert.strictEqual(result.best, 3);
+
+    // Fase 14: Se a Semana 4 (2026-10-26) tiver Semana Regenerativa / Escudo ativo, o streak não quebra (5 semanas seguidas!)
+    const shieldedResult = calculateWeeklyStreak(dates, 3, today, ["2026-10-26"]);
+    assert.strictEqual(shieldedResult.current, 5);
+    assert.strictEqual(shieldedResult.best, 5);
   });
 });

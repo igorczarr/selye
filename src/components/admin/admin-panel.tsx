@@ -5,8 +5,9 @@ import {
   addDailyMessage,
   syncMuscleGroupExercises,
   attachExerciseMedia,
+  autoFetchYouTubeForExercise,
 } from "@/actions/admin";
-import { RefreshCw, Shield, CheckCircle2, X, Video } from "lucide-react";
+import { RefreshCw, Shield, CheckCircle2, X, Video, PlayCircle } from "lucide-react";
 
 interface AdminPanelProps {
   data: {
@@ -75,6 +76,20 @@ export function AdminPanel({ data }: AdminPanelProps) {
       setStatusBanner(
         `Mídia vinculada com sucesso. O movimento agora possui ${total} item(ns) de mídia.`
       );
+    });
+  };
+
+  const handleAutoYouTube = () => {
+    if (!selectedExerciseId) return;
+    startTransition(async () => {
+      try {
+        const res = await autoFetchYouTubeForExercise(selectedExerciseId);
+        setStatusBanner(
+          `Vídeo do YouTube anexado automaticamente: "${res.title}" (${res.channelTitle}).`
+        );
+      } catch (err: any) {
+        setStatusBanner(err?.message || "Erro ao consultar YouTube API.");
+      }
     });
   };
 
@@ -330,11 +345,22 @@ export function AdminPanel({ data }: AdminPanelProps) {
             onSubmit={handleAttachMedia}
             className="border-t border-line pt-4 flex flex-col gap-3"
           >
-            <div className="flex items-center gap-2">
-              <Video size={14} className="text-accent-text" />
-              <span className="t-label !text-accent-text">
-                Anexar Vídeo (YouTube / MP4) ou Imagem Passo a Passo
-              </span>
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div className="flex items-center gap-2">
+                <Video size={14} className="text-accent-text" />
+                <span className="t-label !text-accent-text">
+                  Anexar Vídeo (YouTube / MP4) ou Imagem Passo a Passo
+                </span>
+              </div>
+              <button
+                type="button"
+                disabled={isPending || !selectedExerciseId}
+                onClick={handleAutoYouTube}
+                className="btn btn-ghost h-8 px-3 text-xs font-mono"
+              >
+                <PlayCircle size={13} className="text-accent-text" />
+                <span>Buscar YouTube Automaticamente</span>
+              </button>
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-12 gap-2.5">
               <select

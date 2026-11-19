@@ -6,6 +6,7 @@ import { eq, desc, and, inArray } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { connection } from "next/server";
 import { getOrCreateDemoUser } from "./workout";
+import { dispatchSmartNotification } from "./notifications";
 import {
   extractHashtags,
   normalizeHashtag,
@@ -85,6 +86,22 @@ export async function reactToPost(postId: string, reactionType: string = "like")
       userId: user.id,
       reactionType,
     });
+
+    const [postRow] = await db
+      .select({ userId: schema.posts.userId })
+      .from(schema.posts)
+      .where(eq(schema.posts.id, postId))
+      .limit(1);
+
+    if (postRow && postRow.userId !== user.id) {
+      await dispatchSmartNotification({
+        recipientUserId: postRow.userId,
+        eventType: "post_reaction",
+        params: {
+          actorName: user.name,
+        },
+      });
+    }
   }
 
   // Recalcula contagem real de reações para evitar drift
@@ -132,6 +149,23 @@ export async function addComment(
     .update(schema.posts)
     .set({ commentsCount: allComments.length, updatedAt: new Date() })
     .where(eq(schema.posts.id, postId));
+
+  const [postRow] = await db
+    .select({ userId: schema.posts.userId })
+    .from(schema.posts)
+    .where(eq(schema.posts.id, postId))
+    .limit(1);
+
+  if (postRow && postRow.userId !== user.id) {
+    await dispatchSmartNotification({
+      recipientUserId: postRow.userId,
+      eventType: "post_comment",
+      params: {
+        actorName: user.name,
+        customNotes: clean,
+      },
+    });
+  }
 
   revalidatePath("/comunidade");
   return comment;

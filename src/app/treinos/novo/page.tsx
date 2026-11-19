@@ -16,10 +16,12 @@ async function NewRoutineLoader() {
       id: schema.exercises.id,
       namePt: schema.exercises.namePt,
       nameEn: schema.exercises.nameEn,
+      modalityCode: schema.exercises.modalityCode,
       secondaryMuscles: schema.exercises.secondaryMuscles,
     })
     .from(schema.exercises)
-    .limit(100);
+    .orderBy(schema.exercises.namePt)
+    .limit(250);
 
   return <RoutineBuilder availableExercises={catalogExercises} />;
 }
@@ -28,7 +30,7 @@ export default function NewRoutinePage() {
   return (
     <div className="min-h-screen bg-background text-foreground flex flex-col pb-24">
       <Navbar />
-      <main className="max-w-4xl mx-auto px-4 sm:px-6 py-8 flex-1 w-full">
+      <main className="selye-container py-6 flex-1">
         <div className="mb-6">
           <Link
             href="/treinos"

@@ -10,8 +10,18 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import { X, ShieldAlert, Dumbbell, ImageOff } from "lucide-react";
+import {
+  X,
+  ShieldAlert,
+  Dumbbell,
+  ImageOff,
+  Play,
+  Pause,
+  ExternalLink,
+  PlayCircle,
+} from "lucide-react";
 import { getExerciseDetail, type ExerciseDetail } from "@/actions/catalog";
+import { ModalPortal } from "@/components/ui/modal-portal";
 
 interface ExerciseSheetContextValue {
   open: (exerciseId: string) => void;
@@ -45,63 +55,77 @@ export function ExerciseSheetProvider({ children }: { children: ReactNode }) {
 }
 
 function MediaCarousel({ images, name }: { images: string[]; name: string }) {
-  const scrollerRef = useRef<HTMLDivElement>(null);
   const [index, setIndex] = useState(0);
+  const [isPlaying, setIsPlaying] = useState(images.length > 1);
   const [failed, setFailed] = useState<Record<number, boolean>>({});
 
-  const onScroll = () => {
-    const el = scrollerRef.current;
-    if (!el || el.clientWidth === 0) return;
-    setIndex(Math.round(el.scrollLeft / el.clientWidth));
-  };
+  // Modo demonstração animada gratuita (alterna Posição Inicial ↔ Execução a cada 1.1s)
+  useEffect(() => {
+    if (!isPlaying || images.length <= 1) return;
+    const timer = setInterval(() => {
+      setIndex((prev) => (prev + 1) % images.length);
+    }, 1150);
+    return () => clearInterval(timer);
+  }, [isPlaying, images.length]);
 
-  const goTo = (i: number) => {
-    const el = scrollerRef.current;
-    if (el) el.scrollTo({ left: i * el.clientWidth, behavior: "smooth" });
-  };
+  const currentSrc = images[index] ?? images[0];
 
   return (
-    <div className="relative">
+    <div className="flex flex-col gap-2">
       <div
-        ref={scrollerRef}
-        onScroll={onScroll}
-        className="flex overflow-x-auto snap-x snap-mandatory no-scrollbar rounded-xl bg-white"
-        aria-label={`Passo a passo ilustrado: ${name}`}
+        className="relative rounded-xl overflow-hidden bg-white border border-line aspect-[4/3]"
+        aria-label={`Demonstração animada: ${name}`}
       >
-        {images.map((src, i) => (
-          <div key={src} className="snap-center shrink-0 w-full aspect-[4/3] relative">
-            {failed[i] ? (
-              <div className="absolute inset-0 grid place-items-center text-muted">
-                <ImageOff size={28} />
-              </div>
-            ) : (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img
-                src={src}
-                alt={`${name} — passo ${i + 1} de ${images.length}`}
-                loading={i === 0 ? "eager" : "lazy"}
-                onError={() => setFailed((f) => ({ ...f, [i]: true }))}
-                className="absolute inset-0 w-full h-full object-contain"
-              />
-            )}
-            <span className="absolute left-2 top-2 px-2 py-0.5 rounded-full bg-noite/85 text-osso text-[11px] font-mono">
-              Passo {i + 1}/{images.length}
-            </span>
+        {failed[index] ? (
+          <div className="absolute inset-0 grid place-items-center text-muted">
+            <ImageOff size={28} />
           </div>
-        ))}
+        ) : (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
+            src={currentSrc}
+            alt={`${name} — passo ${index + 1} de ${images.length}`}
+            onError={() => setFailed((f) => ({ ...f, [index]: true }))}
+            className="absolute inset-0 w-full h-full object-contain transition-opacity duration-200"
+          />
+        )}
+
+        <span className="absolute left-2.5 top-2.5 px-2.5 py-0.5 rounded-full bg-noite/85 text-osso text-[11px] font-mono">
+          {index === 0 ? "Posição Inicial" : `Fase ${index + 1}/${images.length}`}
+        </span>
+
+        {images.length > 1 && (
+          <button
+            type="button"
+            onClick={() => setIsPlaying((p) => !p)}
+            aria-label={isPlaying ? "Pausar demonstração" : "Reproduzir demonstração"}
+            className="absolute right-2.5 top-2.5 h-8 px-2.5 rounded-full bg-noite/85 text-lima hover:bg-noite text-[11px] font-mono inline-flex items-center gap-1.5 cursor-pointer"
+          >
+            {isPlaying ? <Pause size={12} /> : <Play size={12} fill="currentColor" />}
+            <span>{isPlaying ? "Pausar" : "Animar"}</span>
+          </button>
+        )}
       </div>
+
       {images.length > 1 && (
-        <div className="flex justify-center gap-1.5 mt-2">
+        <div className="flex items-center justify-center gap-1.5">
           {images.map((_, i) => (
             <button
               key={i}
               type="button"
-              aria-label={`Ir para o passo ${i + 1}`}
-              onClick={() => goTo(i)}
-              className={`h-1.5 rounded-full transition-all cursor-pointer ${
-                i === index ? "w-5 bg-foreground" : "w-1.5 bg-foreground/25"
+              aria-label={`Ver passo ${i + 1}`}
+              onClick={() => {
+                setIsPlaying(false);
+                setIndex(i);
+              }}
+              className={`h-7 px-2.5 rounded-full text-[11px] font-mono transition-all cursor-pointer ${
+                i === index
+                  ? "bg-foreground text-background font-semibold"
+                  : "bg-foreground/6 text-muted hover:text-foreground"
               }`}
-            />
+            >
+              Passo {i + 1}
+            </button>
           ))}
         </div>
       )}
@@ -112,6 +136,7 @@ function MediaCarousel({ images, name }: { images: string[]; name: string }) {
 function ExerciseSheet({ exerciseId, onClose }: { exerciseId: string; onClose: () => void }) {
   const [detail, setDetail] = useState<ExerciseDetail | null>(null);
   const [status, setStatus] = useState<"loading" | "ready" | "error">("loading");
+  const [mediaTab, setMediaTab] = useState<"video" | "ilustracao">("video");
 
   useEffect(() => {
     let active = true;
@@ -119,6 +144,10 @@ function ExerciseSheet({ exerciseId, onClose }: { exerciseId: string; onClose: (
       .then((d) => {
         if (!active) return;
         setDetail(d);
+        if (d) {
+          const hasEmbeddedVideo = d.youtubeEmbeds.length > 0 || d.videos.length > 0;
+          setMediaTab(hasEmbeddedVideo ? "video" : "ilustracao");
+        }
         setStatus(d ? "ready" : "error");
       })
       .catch(() => active && setStatus("error"));
@@ -127,36 +156,20 @@ function ExerciseSheet({ exerciseId, onClose }: { exerciseId: string; onClose: (
     };
   }, [exerciseId]);
 
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onClose();
-    };
-    const prevOverflow = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
-    window.addEventListener("keydown", onKey);
-    return () => {
-      window.removeEventListener("keydown", onKey);
-      document.body.style.overflow = prevOverflow;
-    };
-  }, [onClose]);
-
   const hasVideo = !!detail && (detail.videos.length > 0 || detail.youtubeEmbeds.length > 0);
 
   return (
-    <div
-      role="dialog"
-      aria-modal="true"
-      aria-label={detail ? `Ficha técnica: ${detail.namePt}` : "Ficha técnica do exercício"}
-      className="fixed inset-0 z-[60] bg-noite/70 backdrop-blur-sm flex items-end sm:items-center justify-center"
-      onClick={(e) => {
-        if (e.target === e.currentTarget) onClose();
-      }}
+    <ModalPortal
+      open={true}
+      onClose={onClose}
+      ariaLabel={detail ? `Ficha técnica: ${detail.namePt}` : "Ficha técnica do exercício"}
+      maxWidthClass="sm:max-w-lg"
     >
-      <div className="w-full sm:max-w-lg max-h-[92dvh] bg-surface border border-line rounded-t-3xl sm:rounded-2xl shadow-2xl flex flex-col overflow-hidden fade-up">
+      <div className="w-full max-h-[88dvh] bg-surface border border-line rounded-2xl shadow-2xl flex flex-col overflow-hidden">
         <div className="flex items-start justify-between gap-3 px-5 pt-5 pb-3">
           <div className="min-w-0">
             <span className="t-label !text-accent-text">
-              {detail?.primaryMuscle ?? "Ficha técnica"}
+              {detail?.categoryLabel ?? detail?.primaryMuscle ?? "Ficha técnica"}
               {detail ? ` · ${detail.level}` : ""}
             </span>
             <h2 className="t-h2 mt-1">{detail?.namePt ?? (status === "error" ? "Exercício indisponível" : "Carregando…")}</h2>
@@ -188,39 +201,104 @@ function ExerciseSheet({ exerciseId, onClose }: { exerciseId: string; onClose: (
 
           {status === "ready" && detail && (
             <>
-              {detail.images.length > 0 ? (
-                <MediaCarousel images={detail.images} name={detail.namePt} />
-              ) : (
-                !hasVideo && (
-                  <div className="rounded-xl border border-dashed border-line py-8 flex flex-col items-center gap-2 text-muted">
-                    <Dumbbell size={24} />
-                    <p className="text-xs">Ilustração em breve para este movimento.</p>
-                  </div>
-                )
+              {/* Chave de alternância quando há Vídeo e Ilustração */}
+              {hasVideo && detail.images.length > 0 && (
+                <div
+                  role="tablist"
+                  aria-label="Modo de demonstração"
+                  className="grid grid-cols-2 gap-1 p-1 rounded-xl bg-foreground/[0.04] border border-line"
+                >
+                  <button
+                    type="button"
+                    role="tab"
+                    aria-selected={mediaTab === "video"}
+                    onClick={() => setMediaTab("video")}
+                    className={`h-8 rounded-lg text-xs font-mono font-semibold inline-flex items-center justify-center gap-1.5 cursor-pointer transition-colors ${
+                      mediaTab === "video"
+                        ? "bg-foreground text-background shadow-sm"
+                        : "text-muted hover:text-foreground"
+                    }`}
+                  >
+                    <PlayCircle size={14} />
+                    <span>Vídeo (YouTube)</span>
+                  </button>
+                  <button
+                    type="button"
+                    role="tab"
+                    aria-selected={mediaTab === "ilustracao"}
+                    onClick={() => setMediaTab("ilustracao")}
+                    className={`h-8 rounded-lg text-xs font-mono font-semibold inline-flex items-center justify-center gap-1.5 cursor-pointer transition-colors ${
+                      mediaTab === "ilustracao"
+                        ? "bg-foreground text-background shadow-sm"
+                        : "text-muted hover:text-foreground"
+                    }`}
+                  >
+                    <Dumbbell size={14} />
+                    <span>Ilustração Passo a Passo</span>
+                  </button>
+                </div>
               )}
 
-              {detail.youtubeEmbeds.map((src) => (
-                <div key={src} className="aspect-video rounded-xl overflow-hidden bg-noite">
-                  <iframe
-                    src={src}
-                    title={`Vídeo: ${detail.namePt}`}
-                    loading="lazy"
-                    allow="accelerometer; encrypted-media; gyroscope; picture-in-picture"
-                    allowFullScreen
-                    className="w-full h-full"
-                  />
+              {/* Aba 1: Vídeo Demonstrativo Incorporado */}
+              {hasVideo && (mediaTab === "video" || detail.images.length === 0) && (
+                <div className="flex flex-col gap-2.5">
+                  {detail.youtubeEmbeds.map((src) => (
+                    <div
+                      key={src}
+                      className="aspect-video rounded-xl overflow-hidden bg-noite border border-line"
+                    >
+                      <iframe
+                        src={src}
+                        title={`Vídeo demonstrativo: ${detail.namePt}`}
+                        loading="lazy"
+                        allow="accelerometer; encrypted-media; gyroscope; picture-in-picture"
+                        allowFullScreen
+                        className="w-full h-full"
+                      />
+                    </div>
+                  ))}
+                  {detail.videos.map((src) => (
+                    <video
+                      key={src}
+                      src={src}
+                      controls
+                      playsInline
+                      preload="metadata"
+                      className="w-full rounded-xl bg-noite aspect-video"
+                    />
+                  ))}
                 </div>
-              ))}
-              {detail.videos.map((src) => (
-                <video
-                  key={src}
-                  src={src}
-                  controls
-                  playsInline
-                  preload="metadata"
-                  className="w-full rounded-xl bg-noite aspect-video"
-                />
-              ))}
+              )}
+
+              {/* Aba 2: Ilustração Animada Passo a Passo */}
+              {detail.images.length > 0 && (!hasVideo || mediaTab === "ilustracao") && (
+                <MediaCarousel images={detail.images} name={detail.namePt} />
+              )}
+
+              {!hasVideo && detail.images.length === 0 && (
+                <div className="rounded-xl border border-dashed border-line py-8 flex flex-col items-center gap-2 text-muted">
+                  <Dumbbell size={24} />
+                  <p className="text-xs">Ilustração em breve para este movimento.</p>
+                </div>
+              )}
+
+              {/* Acesso gratuito imediato a demonstração em vídeo no YouTube quando não houver vídeo embutido */}
+              {!hasVideo && (
+                <a
+                  href={`https://www.youtube.com/results?search_query=${encodeURIComponent(
+                    `${detail.namePt} execucao tecnica correta`
+                  )}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="btn btn-ghost h-10 w-full justify-between px-3.5 text-xs font-mono"
+                >
+                  <span className="inline-flex items-center gap-2">
+                    <PlayCircle size={16} className="text-accent-text" />
+                    <span>Pesquisar no YouTube</span>
+                  </span>
+                  <ExternalLink size={13} className="text-muted" />
+                </a>
+              )}
 
               <div className="flex flex-wrap gap-1.5">
                 {detail.equipment.map((e) => (
@@ -263,6 +341,6 @@ function ExerciseSheet({ exerciseId, onClose }: { exerciseId: string; onClose: (
           )}
         </div>
       </div>
-    </div>
+    </ModalPortal>
   );
 }
