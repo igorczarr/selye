@@ -65,8 +65,13 @@ export const MODALITY_LOAD_PROFILES: Record<string, ModalityProfile> = {
   },
   futsal: {
     code: "futsal",
-    labelPt: "Futsal & Futebol",
+    labelPt: "Futsal",
     systemicFactor: 1.15,
+  },
+  football: {
+    code: "football",
+    labelPt: "Futebol de Campo",
+    systemicFactor: 1.12,
   },
   running: {
     code: "running",

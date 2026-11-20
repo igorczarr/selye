@@ -2,6 +2,10 @@ import { neon } from "@neondatabase/serverless";
 import { drizzle } from "drizzle-orm/neon-http";
 import * as dotenv from "dotenv";
 import * as schema from "../src/db/schema";
+import {
+  buildSportMetricsSeedRows,
+  buildSportsSeedRows,
+} from "../src/core/modalities";
 
 dotenv.config({ path: ".env.local" });
 
@@ -11,21 +15,8 @@ const db = drizzle(sql, { schema });
 async function seed() {
   console.log("Seeding SELYE database with foundational data...");
 
-  // 1. Modalidades Esportivas (§3)
-  const sportsList = [
-    { code: "strength", namePt: "Musculação", category: "resistance", icon: "dumbbell" },
-    { code: "running", namePt: "Corrida", category: "endurance", icon: "activity" },
-    { code: "cycling", namePt: "Ciclismo", category: "endurance", icon: "bike" },
-    { code: "swimming", namePt: "Natação", category: "endurance", icon: "waves" },
-    { code: "beach_volleyball", namePt: "Vôlei de Praia", category: "team_sport", icon: "sun" },
-    { code: "footvolley", namePt: "Futevôlei", category: "team_sport", icon: "circle" },
-    { code: "calisthenics", namePt: "Calistenia", category: "resistance", icon: "user" },
-    { code: "functional", namePt: "Treinamento Funcional", category: "resistance", icon: "zap" },
-    { code: "pilates", namePt: "Pilates", category: "wellness", icon: "feather" },
-    { code: "mobility", namePt: "Mobilidade", category: "wellness", icon: "compass" },
-    { code: "cross_training", namePt: "Cross Training", category: "resistance", icon: "flame" },
-    { code: "martial_arts", namePt: "Artes Marciais", category: "combat", icon: "shield" },
-  ];
+  // 1. Modalidades Esportivas e KPIs Científicos (§Fase 0 / §Fase 1)
+  const sportsList = buildSportsSeedRows();
 
   for (const s of sportsList) {
     await db
@@ -34,6 +25,26 @@ async function seed() {
       .onConflictDoUpdate({ target: schema.sports.code, set: s });
   }
   console.log(`✓ Seeded ${sportsList.length} sports`);
+
+  const allSports = await db.select().from(schema.sports);
+  const sportIdByCode = Object.fromEntries(allSports.map((s) => [s.code, s.id]));
+  const metricRows = buildSportMetricsSeedRows(sportIdByCode);
+  for (const m of metricRows) {
+    await db
+      .insert(schema.sportMetrics)
+      .values(m)
+      .onConflictDoUpdate({
+        target: [schema.sportMetrics.sportId, schema.sportMetrics.metricKey],
+        set: {
+          labelPt: m.labelPt,
+          unit: m.unit,
+          dataType: m.dataType,
+          isRequired: m.isRequired,
+          schemaDefinition: m.schemaDefinition,
+        },
+      });
+  }
+  console.log(`✓ Seeded ${metricRows.length} sport KPI metrics`);
 
   // 2. Músculos
   const musclesList = [

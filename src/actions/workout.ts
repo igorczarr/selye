@@ -39,9 +39,106 @@ import { getWeekdayLabelPt } from "@/lib/week";
 import { getUserRoutines } from "./routines";
 import { dispatchSmartNotification } from "./notifications";
 import { evaluateAndUnlockAchievements } from "./achievements";
+import {
+  getModalitySpec,
+  resolveCoreModalityCode,
+  type ActivityClass,
+  type AthleteModalityProfile,
+  type CoreModalityCode,
+  type ExperienceLevel,
+} from "@/core/modalities";
+import {
+  classifyImportedOrFreeActivity,
+  type ActivityClassChoice,
+} from "@/core/integrations/activity-classifier";
 
 const DEMO_USER_EMAIL =
   process.env.ACTIVE_USER_EMAIL || "igorsantos979.is@gmail.com";
+
+export async function resolveAthleteModalityProfileForUser(
+  userId: string
+): Promise<AthleteModalityProfile> {
+  const [profileRows, userSportRows] = await Promise.all([
+    db
+      .select({
+        experienceLevel: schema.profiles.experienceLevel,
+        eaCalibration: schema.profiles.eaCalibration,
+      })
+      .from(schema.profiles)
+      .where(eq(schema.profiles.userId, userId))
+      .limit(1),
+    db
+      .select({
+        role: schema.userSports.role,
+        isPriority: schema.userSports.isPriority,
+        experienceLevel: schema.userSports.experienceLevel,
+        code: schema.sports.code,
+      })
+      .from(schema.userSports)
+      .innerJoin(schema.sports, eq(schema.userSports.sportId, schema.sports.id))
+      .where(eq(schema.userSports.userId, userId)),
+  ]);
+
+  const primarySportRow =
+    userSportRows.find((s) => s.role === "primary") ||
+    userSportRows.find((s) => s.isPriority) ||
+    userSportRows[0];
+
+  const primaryModality: CoreModalityCode =
+    profileRows[0]?.eaCalibration?.inputs?.primaryModality ||
+    resolveCoreModalityCode(primarySportRow?.code) ||
+    "strength";
+
+  const compSet = new Set<CoreModalityCode>();
+  for (const row of userSportRows) {
+    if (row.role === "complementary") {
+      const core = resolveCoreModalityCode(row.code);
+      if (core && core !== primaryModality) compSet.add(core);
+    }
+  }
+  const calComps = profileRows[0]?.eaCalibration?.inputs?.complementaryModalities;
+  if (Array.isArray(calComps)) {
+    for (const c of calComps) {
+      const core = resolveCoreModalityCode(c);
+      if (core && core !== primaryModality) compSet.add(core);
+    }
+  }
+
+  const validLevels: ExperienceLevel[] = [
+    "beginner",
+    "intermediate",
+    "advanced",
+    "competitive",
+  ];
+  const rawLevel = (profileRows[0]?.experienceLevel ||
+    primarySportRow?.experienceLevel ||
+    "intermediate") as ExperienceLevel;
+  const experienceLevel: ExperienceLevel = validLevels.includes(rawLevel)
+    ? rawLevel
+    : "intermediate";
+
+  return {
+    primaryModality,
+    complementaryModalities: Array.from(compSet),
+    experienceLevel,
+  };
+}
+
+export async function resolveSportIdForModalityCode(
+  modalityCode?: string | null
+): Promise<string | null> {
+  if (!modalityCode) return null;
+  const normalized = modalityCode.trim().toLowerCase();
+  const core = resolveCoreModalityCode(normalized);
+  const candidates = core && core !== normalized ? [normalized, core] : [normalized];
+  const rows = await db
+    .select({ id: schema.sports.id, code: schema.sports.code })
+    .from(schema.sports)
+    .where(inArray(schema.sports.code, candidates));
+
+  const exact = rows.find((r) => r.code === normalized);
+  return exact?.id || rows[0]?.id || null;
+}
 
 export async function getOrCreateDemoUser() {
   try {
@@ -412,6 +509,7 @@ export async function getDashboardData() {
     targetDaysPerWeek,
     currentWeeklyStreak,
     restingHrBpm,
+    eaCalibration: userProfileRows[0]?.eaCalibration ?? null,
     sessionsLast28Days: sessionLoadInputs.map((s) => ({
       date: s.date,
       modalityCode: s.modalityCode || "strength",
@@ -449,6 +547,22 @@ export async function getDashboardData() {
     ? getModalityProfile(yesterdaySession.modalityCode).labelPt
     : null;
 
+  const [athleteModProfile, activeGoalRows] = await Promise.all([
+    resolveAthleteModalityProfileForUser(user.id),
+    db
+      .select({ eventTitle: schema.planningGoals.eventTitle })
+      .from(schema.planningGoals)
+      .where(
+        and(
+          eq(schema.planningGoals.userId, user.id),
+          eq(schema.planningGoals.status, "active")
+        )
+      )
+      .orderBy(desc(schema.planningGoals.createdAt))
+      .limit(1),
+  ]);
+  const primarySpec = getModalitySpec(athleteModProfile.primaryModality);
+
   const dailyDecision = evaluateDailyDecision({
     checkin: todayCheckin,
     yesterdayLoadUa,
@@ -457,6 +571,8 @@ export async function getDashboardData() {
     recoveryBudgetRemainingUa: recoveryBudget.weeklyRemainingUa,
     acwr: acwrResult.acwr,
     consecutiveTrainingDays: consecutiveDays,
+    modalityShortNamePt: primarySpec?.shortNamePt || null,
+    activeGoalTitle: activeGoalRows[0]?.eventTitle || null,
   });
 
   // 8.5 Reagendamento Inteligente da Semana & Detecção de Interferência (Fase 13)
@@ -642,6 +758,9 @@ export async function getDashboardData() {
       isCurrentWeekShielded,
       activeDaysInYear,
       activeDaysLast28,
+      onboardingCompleted: Boolean(userProfileRows[0]?.onboardingCompletedAt),
+      primaryModalityCode:
+        userProfileRows[0]?.eaCalibration?.inputs?.primaryModality ?? null,
       totalCompletedWorkouts: Math.max(
         completedSessions.length,
         activities.length
@@ -684,12 +803,24 @@ export async function startWorkout(
   const resolvedModality = targetRoutine?.modalityCode || "strength";
   const prescriptions = targetRoutine?.templates?.[0]?.prescriptions || [];
 
+  const [athleteProfile, sportId] = await Promise.all([
+    resolveAthleteModalityProfileForUser(user.id),
+    resolveSportIdForModalityCode(resolvedModality),
+  ]);
+  const classification = classifyImportedOrFreeActivity({
+    activityModalityCode: resolvedModality,
+    athleteProfile,
+    linkedToPlannedSession: true,
+  });
+
   const [session] = await db
     .insert(schema.workoutSessions)
     .values({
       userId: user.id,
       title: resolvedTitle,
       modalityCode: resolvedModality,
+      sportId,
+      activityClass: classification.activityClass,
       status: "in_progress",
       startedAt: new Date(),
       clientSessionId,
@@ -791,6 +922,7 @@ export async function finishWorkout(sessionId: string, rpe: number = 8) {
       userId: user.id,
       sessionId: session.id,
       source: "app_workout",
+      activityClass: (session.activityClass as ActivityClass) || "serious",
       localDate: todayStr,
       durationMinutes,
       countsForStreak: true,
@@ -893,11 +1025,12 @@ export interface FreeActivityInput {
   localDate?: string;
   distanceKm?: number | null;
   notes?: string;
+  activityClass?: ActivityClassChoice;
 }
 
 /**
  * Registra qualquer atividade livre concluída (corrida, pedal, futsal, natação, caminhada, etc.)
- * sem restringir às fichas previamente cadastradas.
+ * sem restringir às fichas previamente cadastradas, separando modalidade séria, suporte e atividade solta.
  */
 export async function logFreeActivity(input: FreeActivityInput) {
   const user = await getOrCreateDemoUser();
@@ -919,12 +1052,24 @@ export async function logFreeActivity(input: FreeActivityInput) {
     .toString(36)
     .substring(2, 8)}`;
 
+  const [athleteProfile, sportId] = await Promise.all([
+    resolveAthleteModalityProfileForUser(user.id),
+    resolveSportIdForModalityCode(input.modalityCode || "other"),
+  ]);
+  const classification = classifyImportedOrFreeActivity({
+    activityModalityCode: input.modalityCode || "other",
+    athleteProfile,
+    explicitClass: input.activityClass ?? "auto",
+  });
+
   const [session] = await db
     .insert(schema.workoutSessions)
     .values({
       userId: user.id,
       title: cleanTitle,
       modalityCode: input.modalityCode || "other",
+      sportId,
+      activityClass: classification.activityClass,
       status: "completed",
       startedAt,
       finishedAt,
@@ -939,6 +1084,7 @@ export async function logFreeActivity(input: FreeActivityInput) {
     userId: user.id,
     sessionId: session.id,
     source: "app_workout",
+    activityClass: classification.activityClass,
     localDate: dateStr,
     durationMinutes: duration,
     countsForStreak: true,
@@ -966,7 +1112,7 @@ export async function logFreeActivity(input: FreeActivityInput) {
     eventType: "free_activity_logged",
     params: {
       title: cleanTitle,
-      modalityLabel: modProfile.labelPt,
+      modalityLabel: `${modProfile.labelPt} · ${classification.presentation.titlePt}`,
       durationMinutes: duration,
       loadEa,
     },
@@ -993,6 +1139,7 @@ export async function logFreeActivity(input: FreeActivityInput) {
 export async function startFreeActivity(input: {
   title: string;
   modalityCode: string;
+  activityClass?: ActivityClassChoice;
 }) {
   const user = await getOrCreateDemoUser();
   const cleanTitle = input.title.trim() || "Atividade Livre";
@@ -1016,12 +1163,24 @@ export async function startFreeActivity(input: {
     .toString(36)
     .substring(2, 8)}`;
 
+  const [athleteProfile, sportId] = await Promise.all([
+    resolveAthleteModalityProfileForUser(user.id),
+    resolveSportIdForModalityCode(input.modalityCode || "other"),
+  ]);
+  const classification = classifyImportedOrFreeActivity({
+    activityModalityCode: input.modalityCode || "other",
+    athleteProfile,
+    explicitClass: input.activityClass ?? "auto",
+  });
+
   const [session] = await db
     .insert(schema.workoutSessions)
     .values({
       userId: user.id,
       title: cleanTitle,
       modalityCode: input.modalityCode || "other",
+      sportId,
+      activityClass: classification.activityClass,
       status: "in_progress",
       startedAt: new Date(),
       clientSessionId,

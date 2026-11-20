@@ -12,6 +12,8 @@ export const activityEvents = pgTable("activity_events", {
   externalActivityId: text("external_activity_id"), // dedupe key
   localDate: date("local_date").notNull(), // YYYY-MM-DD no fuso do usuário
   durationMinutes: integer("duration_minutes").default(0).notNull(),
+  /** Classificação da atividade: 'serious' | 'complementary' | 'casual' (atividades soltas entram em carga e streak sem poluir KPIs principais) */
+  activityClass: text("activity_class").default("serious").notNull(),
   countsForStreak: boolean("counts_for_streak").default(true).notNull(), // Apenas treinos reais contam
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
 });

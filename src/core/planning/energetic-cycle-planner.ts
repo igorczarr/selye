@@ -1,31 +1,48 @@
 /**
- * Motor do Calendário Perene de Ciclo Energético & Planejador Inverso de Metas/Competições (§Fase 17)
+ * Motor do Calendário Integrado por Modalidade, Fichas Reais & Modulação por EA (§Fase 5)
  *
  * Fundamentação Acadêmica:
- * - Banister et al. (1975) & Busso (2003): Modelo Impulso-Resposta (Fitness-Fatigue) — Capacidade Construída vs. Fadiga Residual.
- * - Issurin (2010): Periodização em Blocos (Acumulação -> Transmutação -> Realização/Polimento).
- * - Mujika & Padilla (2003) & Bosquet et al. (2007): Ciência do Tapering (redução de 40-60% do volume nos 7-14 dias finais
- *   dissipando a fadiga aguda e provocando a supercompensação da Reserva de Energia Adaptativa no dia da competição).
- * - Kellmann (2010) & Meeusen et al. (2013): Equilíbrio Recuperação-Estresse e prevenção de overreaching não-funcional.
- * - Gollwitzer (1999): Intenções de implementação ("Para atingir X em Y, faça A, B e C em tais dias").
+ * - Banister et al. (1975) & Busso (2003): Modelo Impulso-Resposta (Fitness-Fatigue).
+ * - Issurin (2010): Periodização em Blocos (Base → Construção → Pico → Polimento/Deload).
+ * - Mujika & Padilla (2003) & Bosquet et al. (2007): Tapering (−41 a −60% volume nos 7–14 dias finais).
+ * - Blagrove et al. (2018), Rønnestad & Mujika (2014), Petersen et al. (2011), Cools et al. (2015),
+ *   Schumann et al. (2022): Integração de fortalecimento complementar sem interferência de potência.
+ * - Selye (1956) & Kellmann et al. (2018): EA atua como modulador de prontidão e recuperação.
  */
 
 import { WEEKDAYS_MONDAY_FIRST } from "../../lib/week";
+import {
+  MODALITY_REGISTRY,
+  inferCoreModalityFromText,
+  type CoreModalityCode,
+  type ExperienceLevel,
+  type PeriodizationPhaseCode,
+  type SessionArchetypeDefinition,
+} from "../modalities";
+import { calculateUnifiedSessionLoad } from "../performance/training-load";
 
 export type EnergeticCyclePhase =
-  | "expansion" // 🟢 Energia em Alta: Acelerar, progredir força e construir capacidade
-  | "stabilization" // 🔵 Energia Estável: Manter ritmo, volume controlado e precisão técnica
-  | "absorption" // 🟡 Absorção & Recarga: Assimilar o treino, reduzir desgaste e focar em +EA
-  | "peak"; // ⚡ Ápice & Polimento: Fadiga dissipada e EA no topo para competição ou marco
+  | "expansion" // Base / Construção: progredir capacidade específica da modalidade
+  | "stabilization" // Consolidação: manter ritmo, volume controlado e precisão técnica
+  | "absorption" // Deload / Absorção: assimilar o bloco e dissipar fadiga residual
+  | "peak"; // Ápice / Polimento (Taper): fadiga dissipada e prontidão máxima para a data-alvo
 
-export type PlanningGoalMode =
-  | "competition" // Rumo ao Ápice: Preparação com data marcada e meta de EA (ex: 1455 -> 1800 EA)
-  | "wellness_constancy"; // Ritmo Perene: Constância, saúde, disposição e ondas naturais 3:1 para o dia a dia
+export type PlanningGoalMode = "competition" | "wellness_constancy";
 
 export type PlanFeasibilityTier =
   | "optimal"
   | "ambitious"
   | "excessive_adjusted";
+
+export interface LinkedRoutineOption {
+  id: string;
+  title: string;
+  modalityCode: string;
+  dayOfWeek: number | null; // 0..6 (jsDay)
+  estimatedDurationMin?: number;
+  estimatedLoadUa?: number;
+  primaryCapacityLabelPt?: string;
+}
 
 export interface DailyPlannedCommitment {
   id: string;
@@ -35,6 +52,13 @@ export interface DailyPlannedCommitment {
   timeSlotLabelPt: string;
   eaImpactText: string;
   eaSignedDelta: number;
+  /** Campos integrados da Fase 5: arquétipo real da modalidade + vínculo com ficha real */
+  sessionArchetypeCode?: string;
+  sessionArchetypeShortPt?: string;
+  targetZoneLabelPt?: string;
+  activityClass?: "serious" | "complementary" | "recovery";
+  linkedRoutineId?: string | null;
+  linkedRoutineTitle?: string | null;
 }
 
 export interface PlannedCalendarDay {
@@ -45,6 +69,7 @@ export interface PlannedCalendarDay {
   weekdayFullPt: string;
   phase: EnergeticCyclePhase;
   phaseLabelPt: string;
+  periodizationBlockCode: PeriodizationPhaseCode;
   energyWaveLabelPt: string;
   projectedEa: number;
   expectedDrainEa: number;
@@ -53,6 +78,8 @@ export interface PlannedCalendarDay {
   isWorkoutDay: boolean;
   isBlockedByPersonalCommitment: boolean;
   isTargetEventDay: boolean;
+  /** Rótulo curto da sessão principal do dia para exibição limpa na grade do calendário */
+  primarySessionShortLabelPt: string | null;
   commitments: DailyPlannedCommitment[];
 }
 
@@ -61,6 +88,7 @@ export interface PlannedWeeklyMilestone {
   startDateStr: string;
   endDateStr: string;
   blockNamePt: string;
+  periodizationBlockCode: PeriodizationPhaseCode;
   phase: EnergeticCyclePhase;
   phaseLabelPt: string;
   startEa: number;
@@ -73,18 +101,41 @@ export interface PlannedWeeklyMilestone {
   scientificNotePt: string;
 }
 
-export interface ExecutiveActionPillar {
-  code: "stimulus_x" | "recharge_y" | "taper_z";
-  badgePt: string;
+export interface WeeklySessionBlueprintSlot {
+  jsDay: number;
+  weekdayShortPt: string;
+  archetypeCode: string;
   titlePt: string;
-  actionSummaryPt: string;
-  scheduleDaysLabelPt: string;
+  shortLabelPt: string;
+  targetZone: string;
+  activityClass: "serious" | "complementary";
+  linkedRoutineId: string | null;
+  linkedRoutineTitle: string | null;
+  purposePt: string;
+}
+
+export interface ModalityCycleBlueprint {
+  headlinePt: string;
+  subheadlinePt: string;
+  primaryModalityCode: CoreModalityCode;
+  primaryModalityNamePt: string;
+  complementaryModalityCode: CoreModalityCode | null;
+  complementaryProtocolSummaryPt: string | null;
+  primaryKpiLabelPt: string;
+  targetKpiSummaryPt: string | null;
+  taperStartDateStr: string;
+  taperDaysCount: number;
+  eaModulationRulePt: string;
+  weeklySlots: WeeklySessionBlueprintSlot[];
 }
 
 export interface EnergeticGrowthPlanResult {
   mode: PlanningGoalMode;
   eventTitle: string;
+  modalityCode: CoreModalityCode;
   modalityLabelPt: string;
+  complementaryModalityCode: CoreModalityCode | null;
+  primaryKpiKey: string;
   startDateStr: string;
   targetDateStr: string;
   totalDays: number;
@@ -100,11 +151,7 @@ export interface EnergeticGrowthPlanResult {
   todayPhase: EnergeticCyclePhase;
   todayPhaseLabelPt: string;
   todayEnergySummaryPt: string;
-  executiveRecipe: {
-    headlinePt: string;
-    subheadlinePt: string;
-    pillars: ExecutiveActionPillar[];
-  };
+  cycleBlueprint: ModalityCycleBlueprint;
   weeklyMilestones: PlannedWeeklyMilestone[];
   dailySchedule: PlannedCalendarDay[];
 }
@@ -112,7 +159,14 @@ export interface EnergeticGrowthPlanResult {
 export interface EnergeticGrowthPlanInput {
   mode?: PlanningGoalMode;
   eventTitle?: string;
+  modalityCode?: CoreModalityCode | string | null;
   modalityLabelPt?: string;
+  complementaryModalityCode?: CoreModalityCode | null;
+  experienceLevel?: ExperienceLevel;
+  primaryKpiKey?: string | null;
+  targetKpiValue?: number | null;
+  kpiUnit?: string | null;
+  userRoutines?: LinkedRoutineOption[];
   currentEa: number;
   targetEa?: number;
   startDateStr: string; // YYYY-MM-DD
@@ -132,20 +186,20 @@ const PHASE_META: Record<
   }
 > = {
   expansion: {
-    labelPt: "Fase de Expansão · Acelerar",
-    waveHighSchoolPt: "Energia em Alta · Momento de evoluir força e ritmo",
+    labelPt: "Bloco de Construção · Progressão",
+    waveHighSchoolPt: "Momento de evoluir estímulo específico com controle",
   },
   stabilization: {
-    labelPt: "Fase de Estabilização · Ritmo",
-    waveHighSchoolPt: "Energia Equilibrada · Constância e execução limpa",
+    labelPt: "Bloco de Base · Consolidação",
+    waveHighSchoolPt: "Ritmo constante, execução limpa e acúmulo seguro",
   },
   absorption: {
-    labelPt: "Fase de Absorção · Recarga",
-    waveHighSchoolPt: "Corpo Assimilando · Reduzir desgaste e somar +EA",
+    labelPt: "Deload · Absorção & Supercompensação",
+    waveHighSchoolPt: "Volume reduzido para consolidar ganhos e recarregar EA",
   },
   peak: {
-    labelPt: "Fase de Ápice · Polimento",
-    waveHighSchoolPt: "Pico de Energia & Frescor · Pronto para o melhor desempenho",
+    labelPt: "Polimento (Taper) · Ápice",
+    waveHighSchoolPt: "Fadiga dissipada e prontidão máxima para o dia-alvo",
   },
 };
 
@@ -181,7 +235,7 @@ function getWeekdayMeta(jsDay: number) {
 
 /**
  * Seleciona os melhores dias da semana (Seg -> Dom) para distribuir os treinos
- * evitando acúmulo excessivo de fadiga consecutiva (Hickson, 1980).
+ * evitando acúmulo excessivo de fadiga consecutiva.
  */
 export function selectOptimalWorkoutJsDays(
   targetDaysPerWeek: number,
@@ -197,7 +251,7 @@ export function selectOptimalWorkoutJsDays(
     case 3:
       return [1, 3, 5]; // Seg, Qua, Sex
     case 4:
-      return [1, 2, 4, 6]; // Seg, Ter, Qui, Sáb (distribuição clássica com pausa Qua e Dom)
+      return [1, 2, 4, 6]; // Seg, Ter, Qui, Sáb
     case 5:
       return [1, 2, 4, 5, 6]; // Seg, Ter, Qui, Sex, Sáb
     case 6:
@@ -208,13 +262,168 @@ export function selectOptimalWorkoutJsDays(
 }
 
 /**
- * Calcula e estrutura o Calendário Energético Perene e o Plano Dia a Dia para sair de
- * `currentEa` (ex: 1455 EA) e chegar a `targetEa` (ex: 1800 EA) na data `targetDateStr`.
+ * Monta o mapa semanal de sessões reais da modalidade principal + fortalecimento complementar,
+ * respeitando a ordem cronológica Seg → Dom e evitando conflito entre força pesada e sessões-chave
+ * (ex.: longão/tiros na corrida, jogo na areia/campo).
+ */
+function buildWeeklySessionDistribution(params: {
+  modalityCode: CoreModalityCode;
+  complementaryModalityCode: CoreModalityCode | null;
+  workoutJsDays: number[];
+  userRoutines: LinkedRoutineOption[];
+}): WeeklySessionBlueprintSlot[] {
+  const { modalityCode, complementaryModalityCode, workoutJsDays, userRoutines } =
+    params;
+  const spec = MODALITY_REGISTRY[modalityCode];
+  const archetypes = spec.sessionArchetypes;
+
+  // Ordena dias escolhidos na ordem Seg -> Dom
+  const mondayOrder = WEEKDAYS_MONDAY_FIRST.map((w) => w.jsDay);
+  const sortedDays = [...workoutJsDays].sort(
+    (a, b) => mondayOrder.indexOf(a) - mondayOrder.indexOf(b)
+  );
+
+  // Separa arquétipos estruturados (fichas/fortalecimento) dos arquétipos de prática da modalidade
+  const strengthArchetypes = archetypes.filter((a) => a.usesStructuredRoutine);
+  const mainSportArchetypes = archetypes.filter((a) => !a.usesStructuredRoutine);
+  const includeComplementaryStrength =
+    modalityCode !== "strength" &&
+    (complementaryModalityCode === "strength" ||
+      (complementaryModalityCode === null &&
+        userRoutines.some((r) => r.modalityCode === "strength")));
+
+  // Define sequência de arquétipos conforme nº de dias disponíveis
+  const chosenArchetypes: SessionArchetypeDefinition[] = [];
+  const totalSlots = sortedDays.length;
+
+  if (modalityCode === "strength" || mainSportArchetypes.length === 0) {
+    // Modalidades baseadas em fichas estruturadas (Musculação, Calistenia, Funcional)
+    const activeSet = archetypes.filter(
+      (a) => !a.applicablePhases.every((p) => p === "deload" || p === "taper")
+    );
+    const pool = activeSet.length > 0 ? activeSet : archetypes;
+    for (let i = 0; i < totalSlots; i++) {
+      chosenArchetypes.push(pool[i % pool.length]);
+    }
+  } else {
+    // Modalidades de endurance / quadra / areia / combate / campo
+    // Aloca 1 ou 2 slots de fortalecimento complementar (se habilitado) intercalados com a modalidade
+    const compSlotsTarget = includeComplementaryStrength
+      ? totalSlots >= 4
+        ? Math.min(2, strengthArchetypes.length > 1 ? 2 : 1)
+        : totalSlots >= 3
+          ? 1
+          : 0
+      : 0;
+
+    // Índices onde colocar fortalecimento (evitando o último dia da semana, que costuma ser longão/jogo)
+    const compSlotIndexes = new Set<number>();
+    if (compSlotsTarget === 1 && totalSlots >= 3) {
+      compSlotIndexes.add(1); // ex.: 2º dia de treino
+    } else if (compSlotsTarget >= 2 && totalSlots >= 4) {
+      compSlotIndexes.add(1);
+      compSlotIndexes.add(Math.max(2, totalSlots - 2));
+    }
+
+    let mainCursor = 0;
+    let compCursor = 0;
+    for (let i = 0; i < totalSlots; i++) {
+      if (compSlotIndexes.has(i) && strengthArchetypes.length > 0) {
+        chosenArchetypes.push(
+          strengthArchetypes[compCursor % strengthArchetypes.length]
+        );
+        compCursor++;
+      } else {
+        // Se for o último dia de treino e houver "longão" ou "jogo/competitivo", prioriza nele
+        const isLastSlot = i === totalSlots - 1;
+        const weekendAnchor = isLastSlot
+          ? mainSportArchetypes.find((a) =>
+              /(long|competitive|match|sparring)/i.test(a.code)
+            )
+          : undefined;
+        if (weekendAnchor && totalSlots >= 3) {
+          chosenArchetypes.push(weekendAnchor);
+        } else {
+          chosenArchetypes.push(
+            mainSportArchetypes[mainCursor % mainSportArchetypes.length]
+          );
+          mainCursor++;
+        }
+      }
+    }
+  }
+
+  // Vincula fichas reais do usuário aos slots (primeiro por `dayOfWeek` exato, depois por compatibilidade)
+  const usedRoutineIds = new Set<string>();
+  const routinesByDay = new Map<number, LinkedRoutineOption>();
+  for (const r of userRoutines) {
+    if (typeof r.dayOfWeek === "number" && !routinesByDay.has(r.dayOfWeek)) {
+      routinesByDay.set(r.dayOfWeek, r);
+    }
+  }
+
+  const strengthRoutinesPool = userRoutines.filter(
+    (r) =>
+      r.modalityCode === "strength" ||
+      r.modalityCode === modalityCode ||
+      r.modalityCode === "functional" ||
+      r.modalityCode === "calisthenics"
+  );
+
+  return sortedDays.map((jsDay, idx) => {
+    const archetype = chosenArchetypes[idx] || archetypes[0];
+    const wMeta = getWeekdayMeta(jsDay);
+    const isComplementary =
+      modalityCode !== "strength" && archetype.usesStructuredRoutine;
+
+    let matchedRoutine: LinkedRoutineOption | null = null;
+    const exactDayRoutine = routinesByDay.get(jsDay);
+
+    if (exactDayRoutine && (archetype.usesStructuredRoutine || exactDayRoutine.modalityCode === modalityCode)) {
+      matchedRoutine = exactDayRoutine;
+      usedRoutineIds.add(exactDayRoutine.id);
+    } else if (archetype.usesStructuredRoutine && strengthRoutinesPool.length > 0) {
+      const nextUnused =
+        strengthRoutinesPool.find((r) => !usedRoutineIds.has(r.id)) ||
+        strengthRoutinesPool[idx % strengthRoutinesPool.length];
+      matchedRoutine = nextUnused;
+      usedRoutineIds.add(nextUnused.id);
+    }
+
+    return {
+      jsDay,
+      weekdayShortPt: wMeta.shortPt,
+      archetypeCode: archetype.code,
+      titlePt: matchedRoutine
+        ? `${archetype.labelPt} · ${matchedRoutine.title}`
+        : archetype.labelPt,
+      shortLabelPt: matchedRoutine
+        ? matchedRoutine.title.slice(0, 14)
+        : archetype.shortLabelPt,
+      targetZone: archetype.targetZone,
+      activityClass: isComplementary ? "complementary" : "serious",
+      linkedRoutineId: matchedRoutine?.id ?? null,
+      linkedRoutineTitle: matchedRoutine?.title ?? null,
+      purposePt: archetype.purposePt,
+    };
+  });
+}
+
+/**
+ * Planeja o Calendário Integrado por Modalidade + Fichas Reais + Curva de Prontidão (EA).
+ * Remove definitivamente os compromissos genéricos X/Y/Z.
  */
 export function planEnergeticGrowthCurve(
   input: EnergeticGrowthPlanInput
 ): EnergeticGrowthPlanResult {
   const mode: PlanningGoalMode = input.mode || "competition";
+  const modalityCode: CoreModalityCode = inferCoreModalityFromText(
+    input.modalityCode || input.modalityLabelPt,
+    "strength"
+  );
+  const spec = MODALITY_REGISTRY[modalityCode];
+  const experienceLevel: ExperienceLevel = input.experienceLevel || "intermediate";
+
   const startDateStr = input.startDateStr;
   const defaultTargetDate = addDaysIso(startDateStr, 28);
   const rawTargetDate = input.targetDateStr || defaultTargetDate;
@@ -229,14 +438,14 @@ export function planEnergeticGrowthCurve(
   const currentEa = Math.max(400, Math.round(input.currentEa || 1455));
   const defaultTargetEa =
     mode === "competition"
-      ? Math.round(currentEa * 1.22)
-      : Math.round(currentEa * 1.12);
+      ? Math.round(currentEa * 1.18)
+      : Math.round(currentEa * 1.1);
   const requestedTargetEa = Math.max(
     currentEa + 50,
     Math.round(input.targetEa || defaultTargetEa)
   );
-
   const requestedDeltaEa = requestedTargetEa - currentEa;
+
   const targetDaysPerWeek = Math.max(
     2,
     Math.min(6, Math.round(input.targetDaysPerWeek || 4))
@@ -248,15 +457,34 @@ export function planEnergeticGrowthCurve(
   const workoutJsSet = new Set(workoutJsDays);
   const blockedSet = new Set(input.blockedDates || []);
 
+  const modalityLabelPt = input.modalityLabelPt?.trim() || spec.shortNamePt;
   const eventTitle =
     input.eventTitle?.trim() ||
     (mode === "competition"
-      ? "Competição & Pico de Performance"
-      : "Ciclo de Vitalidade & Constância");
-  const modalityLabelPt = input.modalityLabelPt?.trim() || "Multimodal & Força";
+      ? `Ciclo de Performance · ${spec.shortNamePt}`
+      : `Constância & Evolução · ${spec.shortNamePt}`);
 
-  // 1. Avaliação Científica de Viabilidade (Banister 1975; Gabbett 2016; Mujika 2003)
-  // Capacidade segura de expansão líquida de EA: ~75 a 110 EA por semana + ~110 EA de supercompensação no Polimento (Taper)
+  const complementaryModalityCode =
+    input.complementaryModalityCode !== undefined
+      ? input.complementaryModalityCode
+      : modalityCode !== "strength"
+        ? "strength"
+        : null;
+
+  const primaryKpiDef =
+    spec.kpis.find((k) => k.key === input.primaryKpiKey) ||
+    spec.kpis.find((k) => k.isPrimaryGoalMetric) ||
+    spec.kpis[0];
+
+  const weeklySlots = buildWeeklySessionDistribution({
+    modalityCode,
+    complementaryModalityCode,
+    workoutJsDays,
+    userRoutines: input.userRoutines || [],
+  });
+  const slotByJsDay = new Map(weeklySlots.map((s) => [s.jsDay, s]));
+
+  // 1. Avaliação Científica de Viabilidade (Banister 1975; Gabbett 2016; Bosquet 2007)
   const maxSafeGainPerDay = 15.5;
   const taperSupercompensationBonus = mode === "competition" ? 115 : 60;
   const maxSafeTotalGainEa = Math.round(
@@ -264,16 +492,14 @@ export function planEnergeticGrowthCurve(
   );
 
   let feasibility: PlanFeasibilityTier = "optimal";
-  let feasibilityBadgePt = "Curva Fisiológica Sustentável";
-  let feasibilityExplanationPt =
-    "O prazo e a evolução desejada respeitam o ritmo natural de adaptação muscular e supercompensação do seu corpo.";
+  let feasibilityBadgePt = "Progressão Fisiológica Segura";
+  let feasibilityExplanationPt = `Ciclo estruturado para ${spec.shortNamePt} respeitando blocos de carga, recuperação e supercompensação.`;
   let recommendedAlternativeDateStr: string | null = null;
 
   const requiredDailyRate = requestedDeltaEa / totalDays;
-
   if (requestedDeltaEa > maxSafeTotalGainEa * 1.18) {
     feasibility = "excessive_adjusted";
-    feasibilityBadgePt = "Meta Alta p/ o Prazo · Ritmo Ajustado c/ Segurança";
+    feasibilityBadgePt = "Prazo Curto · Curva Protegida";
     const idealDaysNeeded = Math.ceil(
       Math.max(
         14,
@@ -281,22 +507,20 @@ export function planEnergeticGrowthCurve(
       )
     );
     recommendedAlternativeDateStr = addDaysIso(startDateStr, idealDaysNeeded);
-    feasibilityExplanationPt = `Ganhar +${requestedDeltaEa} EA em ${totalDays} dias exigiria um salto acima do limite seguro de recuperação. Ajustamos a curva para o teto fisiológico seguro neste prazo e indicamos ${new Date(
+    feasibilityExplanationPt = `A meta solicitada (+${requestedDeltaEa} EA em ${totalDays} dias) excede o teto seguro de adaptação. Ajustamos o ritmo ao limite fisiológico e sugerimos ${new Date(
       `${recommendedAlternativeDateStr}T12:00:00Z`
-    ).toLocaleDateString("pt-BR")} caso queira atingir 100% da meta sem risco de esgotamento.`;
+    ).toLocaleDateString("pt-BR")} como data ideal.`;
   } else if (requiredDailyRate > 13.5) {
     feasibility = "ambitious";
-    feasibilityBadgePt = "Meta Desafiadora · Exige Disciplina em +EA";
-    feasibilityExplanationPt = `Atingir ${requestedTargetEa} EA em ${totalDays} dias é viável, mas exige cumprir rigorosamente os hábitos diários de sono e recarga (+EA) além da semana final de polimento.`;
+    feasibilityBadgePt = "Ciclo Desafiador · Exige Disciplina em Recuperação";
+    feasibilityExplanationPt = `Meta viável para ${spec.shortNamePt}, exigindo aderência rigorosa ao sono e à janela de polimento final.`;
   }
 
   const effectiveTotalGainEa =
-    feasibility === "excessive_adjusted"
-      ? maxSafeTotalGainEa
-      : requestedDeltaEa;
+    feasibility === "excessive_adjusted" ? maxSafeTotalGainEa : requestedDeltaEa;
   const projectedPeakEa = currentEa + effectiveTotalGainEa;
 
-  // 2. Definição das Fases Energéticas por Dia (Ondas Biológicas + Tapering de Mujika & Padilla, 2003)
+  // 2. Mapeamento dos Blocos de Periodização da Modalidade (Base → Construção → Pico → Polimento/Deload)
   const taperDaysCount =
     mode === "competition"
       ? totalDays >= 21
@@ -304,276 +528,252 @@ export function planEnergeticGrowthCurve(
         : Math.max(3, Math.round(totalDays * 0.25))
       : 3;
 
+  const deloadFreq = spec.safetyGuardrails.deloadFrequencyWeeks || 4;
   const dailySchedule: PlannedCalendarDay[] = [];
-  let runningEa = currentEa;
-
-  // Calcula pesos diários de evolução de EA para que a curva suba de forma orgânica
-  // (sobe na Expansão/Estabilização, consolida na Absorção e acelera a reserva livre no Polimento/Taper)
-  const rawDayWeights: {
-    dateStr: string;
-    jsDay: number;
-    phase: EnergeticCyclePhase;
-    isWorkoutDay: boolean;
-    isBlocked: boolean;
-    isEventDay: boolean;
-    weight: number;
-  }[] = [];
 
   for (let dayIdx = 0; dayIdx <= totalDays; dayIdx++) {
     const dateStr = addDaysIso(startDateStr, dayIdx);
     const d = parseIsoDateUtc(dateStr);
     const jsDay = d.getUTCDay();
+    const wMeta = getWeekdayMeta(jsDay);
     const isEventDay = dayIdx === totalDays;
     const isBlocked = blockedSet.has(dateStr);
     const daysRemaining = totalDays - dayIdx;
     const weekIndexZero = Math.floor(dayIdx / 7);
+    const progressFraction = dayIdx / Math.max(1, totalDays);
 
     let phase: EnergeticCyclePhase = "expansion";
+    let periodizationBlockCode: PeriodizationPhaseCode = "build";
 
     if (isEventDay || daysRemaining < taperDaysCount) {
       phase = "peak";
+      periodizationBlockCode = mode === "competition" ? "taper" : "peak";
     } else if (
-      // A cada 4ª semana (índice 3, 7...) ou nos últimos 2 dias antes do polimento, faz onda de Absorção/Recarga
-      (totalWeeks >= 4 && weekIndexZero % 4 === 3) ||
-      jsDay === 0
+      (totalWeeks >= deloadFreq && weekIndexZero % deloadFreq === deloadFreq - 1) ||
+      (!workoutJsSet.has(jsDay) && jsDay === 0)
     ) {
       phase = "absorption";
-    } else if (weekIndexZero % 2 === 1 && (jsDay === 3 || jsDay === 6)) {
+      periodizationBlockCode = "deload";
+    } else if (progressFraction < 0.35) {
       phase = "stabilization";
+      periodizationBlockCode = "base";
+    } else if (progressFraction < 0.82) {
+      phase = "expansion";
+      periodizationBlockCode = "build";
     } else {
       phase = "expansion";
+      periodizationBlockCode = "peak";
     }
 
-    const isWorkoutDay =
-      !isEventDay && !isBlocked && workoutJsSet.has(jsDay);
+    const pMeta = PHASE_META[phase];
+    const isWorkoutDay = !isEventDay && !isBlocked && workoutJsSet.has(jsDay);
 
-    // Peso de crescimento líquido da reserva/capacidade EA naquele dia
-    let weight = 1.0;
-    if (phase === "peak") {
-      // Durante o polimento (Mujika 2003), a fadiga cai drasticamente e o EA disponível sobe mais rápido
-      weight = 1.65;
-    } else if (phase === "absorption") {
-      // Supercompensação durante dias regenerativos
-      weight = 1.25;
-    } else if (phase === "expansion") {
-      weight = 0.95;
-    } else {
-      weight = 0.85;
-    }
-
-    rawDayWeights.push({
-      dateStr,
-      jsDay,
-      phase,
-      isWorkoutDay,
-      isBlocked,
-      isEventDay,
-      weight: dayIdx === 0 ? 0 : weight,
-    });
-  }
-
-  const totalWeightSum = Math.max(
-    0.001,
-    rawDayWeights.reduce((acc, item) => acc + item.weight, 0)
-  );
-
-  // Contextualiza com os índices de força do atleta no Selye
-  const strengthBonusNote =
-    (input.strengthRecordsCount || 0) > 0
-      ? `calibrado pelos seus ${input.strengthRecordsCount} recordes de força mapeados`
-      : "calibrado para evolução progressiva de força e estabilidade";
-
-  for (let i = 0; i < rawDayWeights.length; i++) {
-    const item = rawDayWeights[i];
-    const wMeta = getWeekdayMeta(item.jsDay);
-    const pMeta = PHASE_META[item.phase];
-
-    const stepGain =
-      i === 0
-        ? 0
-        : (item.weight / totalWeightSum) * effectiveTotalGainEa;
-    runningEa =
-      i === rawDayWeights.length - 1
-        ? projectedPeakEa
-        : Math.round(currentEa + stepGain + (runningEa - currentEa));
-
-    // Garante monotonicidade suave até projectedPeakEa
-    const progressFraction = i / Math.max(1, rawDayWeights.length - 1);
     const curvedEa =
-      i === 0
+      dayIdx === 0
         ? currentEa
-        : i === rawDayWeights.length - 1
+        : dayIdx === totalDays
           ? projectedPeakEa
           : Math.round(
               currentEa +
-                effectiveTotalGainEa *
-                  Math.pow(progressFraction, 0.92)
+                effectiveTotalGainEa * Math.pow(progressFraction, 0.92)
             );
-
     const prevEa =
-      i === 0 ? currentEa : dailySchedule[i - 1].projectedEa;
+      dayIdx === 0 ? currentEa : dailySchedule[dayIdx - 1].projectedEa;
     const netDailyDeltaEa = curvedEa - prevEa;
 
-    // Prescrição de Consumo (-EA) e Recarga (+EA) do dia
     let expectedDrainEa = 0;
     let expectedRechargeEa = 115;
+    let primarySessionShortLabelPt: string | null = null;
     const commitments: DailyPlannedCommitment[] = [];
 
-    if (item.isEventDay) {
+    if (isEventDay) {
       expectedDrainEa = 0;
       expectedRechargeEa = 140;
+      primarySessionShortLabelPt = "DIA-ALVO";
       commitments.push({
-        id: `evt_${item.dateStr}`,
+        id: `evt_${dateStr}`,
         kind: "competition_day",
         titlePt:
           mode === "competition"
-            ? `Dia do Ápice: ${eventTitle}`
-            : `Marco do Ciclo: ${eventTitle}`,
-        detailPt: `Seu corpo atingiu ${curvedEa} EA com fadiga residual mínima. Faça ativação articular leve de 10 min e hidratação com eletrólitos.`,
+            ? `Dia-Alvo: ${eventTitle}`
+            : `Avaliação do Ciclo: ${eventTitle}`,
+        detailPt: `Prontidão projetada em ${curvedEa} EA para ${spec.shortNamePt}. Faça ativação articular leve (10 min), hidratação e registre sua nova marca em ${primaryKpiDef.shortLabelPt}.`,
         timeSlotLabelPt: "Dia Principal",
-        eaImpactText: `Ápice: ${curvedEa} EA`,
+        eaImpactText: `Prontidão: ${curvedEa} EA`,
         eaSignedDelta: netDailyDeltaEa,
+        activityClass: "serious",
       });
-    } else if (item.isBlocked) {
+    } else if (isBlocked) {
       expectedDrainEa = 0;
       expectedRechargeEa = 120;
+      primarySessionShortLabelPt = "Agenda";
       commitments.push({
-        id: `blk_${item.dateStr}`,
+        id: `blk_${dateStr}`,
         kind: "rest_protection",
-        titlePt: "Agenda Pessoal Protegida · Descanso Programado",
+        titlePt: "Compromisso Pessoal · Janela de Absorção",
         detailPt:
-          "O Selye redistribuiu o estímulo da semana para que seu compromisso pessoal funcione como janela de absorção biológica.",
-        timeSlotLabelPt: "Dia Livre",
+          "Dia protegido pelo Selye: a carga semanal foi redistribuída para que seu compromisso funcione como recuperação biológica.",
+        timeSlotLabelPt: "Protegido",
         eaImpactText: "+120 EA (Absorção)",
         eaSignedDelta: 120,
+        activityClass: "recovery",
       });
-    } else if (item.isWorkoutDay) {
-      if (item.phase === "peak") {
-        // Treino de Polimento (Taper — Mujika & Padilla 2003: -50% volume, mantém potência)
-        expectedDrainEa = 150;
-        expectedRechargeEa = 185;
-        commitments.push({
-          id: `wk_${item.dateStr}`,
-          kind: "workout",
-          titlePt: `Sessão de Polimento (Taper) · ${modalityLabelPt}`,
-          detailPt: `Reduza o volume de séries pela metade (30 min · Esforço 6/10), mantendo movimentos rápidos e técnicos (${strengthBonusNote}).`,
-          timeSlotLabelPt: "Treino Curto",
-          eaImpactText: "-150 EA (Polimento)",
-          eaSignedDelta: -150,
-        });
-      } else if (item.phase === "absorption") {
-        expectedDrainEa = 180;
-        expectedRechargeEa = 195;
-        commitments.push({
-          id: `wk_${item.dateStr}`,
-          kind: "workout",
-          titlePt: `Treino Regenerativo & Estabilidade · ${modalityLabelPt}`,
-          detailPt:
-            "Sessão fluida com foco em amplitude de movimento e controle (40 min · Esforço 6/10), sem ir até a falha muscular.",
-          timeSlotLabelPt: "Ritmo Controlado",
-          eaImpactText: "-180 EA",
-          eaSignedDelta: -180,
-        });
-      } else if (item.phase === "expansion") {
-        expectedDrainEa = 285;
-        expectedRechargeEa = 210;
-        commitments.push({
-          id: `wk_${item.dateStr}`,
-          kind: "workout",
-          titlePt: `Sessão Chave de Evolução (Força & Ritmo) · ${modalityLabelPt}`,
-          detailPt: `Aproveite a onda de energia alta para progredir carga ou intensidade com técnica sólida (50–60 min · Esforço 8/10, ${strengthBonusNote}).`,
-          timeSlotLabelPt: "Dia de Acelerar",
-          eaImpactText: "-285 EA (Estímulo Forte)",
-          eaSignedDelta: -285,
-        });
-      } else {
-        expectedDrainEa = 235;
-        expectedRechargeEa = 195;
-        commitments.push({
-          id: `wk_${item.dateStr}`,
-          kind: "workout",
-          titlePt: `Sessão de Consistência & Técnica · ${modalityLabelPt}`,
-          detailPt:
-            "Mantenha suas cargas habituais com foco na qualidade de execução e intervalos completos (45–50 min · Esforço 7/10).",
-          timeSlotLabelPt: "Treino Base",
-          eaImpactText: "-235 EA",
-          eaSignedDelta: -235,
-        });
-      }
+    } else if (isWorkoutDay) {
+      const slot = slotByJsDay.get(jsDay) || weeklySlots[dayIdx % weeklySlots.length];
+      const archetype =
+        spec.sessionArchetypes.find((a) => a.code === slot.archetypeCode) ||
+        spec.sessionArchetypes[0];
+
+      // Volume e carga modulados pela fase de periodização (Base / Construção / Deload / Taper)
+      const phaseScale =
+        phase === "peak" ? 0.55 : phase === "absorption" ? 0.68 : phase === "stabilization" ? 0.92 : 1.05;
+
+      const avgDur = Math.round(
+        ((archetype.typicalDurationMin.min + archetype.typicalDurationMin.max) / 2) *
+          phaseScale
+      );
+      const avgRpe =
+        phase === "peak"
+          ? Math.max(5.5, archetype.typicalRpe.min)
+          : phase === "absorption"
+            ? Math.max(5, archetype.typicalRpe.min - 0.5)
+            : (archetype.typicalRpe.min + archetype.typicalRpe.max) / 2;
+
+      const baseDrain =
+        slot.linkedRoutineId && input.userRoutines
+          ? input.userRoutines.find((r) => r.id === slot.linkedRoutineId)
+              ?.estimatedLoadUa ||
+            calculateUnifiedSessionLoad({
+              durationMinutes: avgDur,
+              rpe: avgRpe,
+              modalityCode: slot.activityClass === "complementary" ? "strength" : modalityCode,
+            })
+          : calculateUnifiedSessionLoad({
+              durationMinutes: avgDur,
+              rpe: avgRpe,
+              modalityCode: slot.activityClass === "complementary" ? "strength" : modalityCode,
+            });
+
+      expectedDrainEa = Math.round(Math.max(110, Math.min(480, baseDrain * (phase === "peak" ? 0.6 : phase === "absorption" ? 0.72 : 1))));
+      expectedRechargeEa = phase === "peak" ? 185 : 195;
+
+      const phasePrefix =
+        phase === "peak"
+          ? "Polimento (-45% vol.) · "
+          : phase === "absorption"
+            ? "Deload (-30% vol.) · "
+            : "";
+
+      primarySessionShortLabelPt =
+        phase === "peak"
+          ? `Taper · ${slot.shortLabelPt.slice(0, 8)}`
+          : slot.shortLabelPt;
+
+      commitments.push({
+        id: `wk_${dateStr}`,
+        kind: "workout",
+        titlePt: `${phasePrefix}${slot.titlePt}`,
+        detailPt: `${slot.purposePt} Alvo: ${slot.targetZone} (~${Math.max(
+          20,
+          avgDur
+        )} min · RPE ${avgRpe.toFixed(1)}).${
+          slot.linkedRoutineTitle
+            ? ` Ficha vinculada: "${slot.linkedRoutineTitle}".`
+            : ""
+        }`,
+        timeSlotLabelPt:
+          slot.activityClass === "complementary"
+            ? "Fortalecimento"
+            : spec.shortNamePt,
+        eaImpactText: `-${expectedDrainEa} EA`,
+        eaSignedDelta: -expectedDrainEa,
+        sessionArchetypeCode: slot.archetypeCode,
+        sessionArchetypeShortPt: slot.shortLabelPt,
+        targetZoneLabelPt: slot.targetZone,
+        activityClass: slot.activityClass,
+        linkedRoutineId: slot.linkedRoutineId,
+        linkedRoutineTitle: slot.linkedRoutineTitle,
+      });
     } else {
-      // Dia sem treino de desgaste -> Foco em supercompensação
       expectedDrainEa = 0;
       expectedRechargeEa = 145;
+      primarySessionShortLabelPt = "Recarga";
       commitments.push({
-        id: `rest_${item.dateStr}`,
+        id: `rest_${dateStr}`,
         kind: "rest_protection",
-        titlePt: "Dia de Supercompensação & Síntese Muscular",
+        titlePt: `Recuperação & Supercompensação (${spec.shortNamePt})`,
         detailPt:
-          "É nos dias sem desgaste pesado que suas fibras musculares e seu sistema nervoso convertem o treino anterior em nova capacidade (+EA).",
-        timeSlotLabelPt: "Recuperação",
-        eaImpactText: "+65 EA (Supercompensação)",
+          "Dia sem estímulo de desgaste para converter as sessões da semana em adaptação neural e tecidual (+EA).",
+        timeSlotLabelPt: "Descanso Ativo",
+        eaImpactText: "+65 EA",
         eaSignedDelta: 65,
+        activityClass: "recovery",
       });
     }
 
-    // Hábito Regenerativo Diário Obrigatório (+EA) para garantir a subida da curva
-    const habitCycle = i % 3;
-    if (habitCycle === 0) {
+    // Protocolo de recarga contextual (+EA) coerente com o dia
+    const recoveryMod = dayIdx % 3;
+    if (recoveryMod === 0) {
       commitments.push({
-        id: `hab_sleep_${item.dateStr}`,
+        id: `hab_sleep_${dateStr}`,
         kind: "recharge_habit",
-        titlePt: "Protocolo de Sono Reparador (7h30 a 8h+)",
+        titlePt: "Sono Restaurador (7h30–8h+)",
         detailPt:
-          "Desligar telas 30 min antes de deitar e manter quarto escuro para maximizar a liberação hormonal noturna.",
+          "Consolida adaptações neuromusculares e protege sua curva de EA (Walsh et al., 2021).",
         timeSlotLabelPt: "Noite",
-        eaImpactText: "+120 EA",
-        eaSignedDelta: 120,
+        eaImpactText: "+110 EA",
+        eaSignedDelta: 110,
+        activityClass: "recovery",
       });
-    } else if (habitCycle === 1) {
+    } else if (recoveryMod === 1) {
       commitments.push({
-        id: `hab_mob_${item.dateStr}`,
+        id: `hab_mob_${dateStr}`,
         kind: "recharge_habit",
-        titlePt: "Mobilidade Articular & Liberação Miofascial (15 min)",
+        titlePt: `Mobilidade & Soltura para ${spec.shortNamePt} (12–15 min)`,
         detailPt:
-          "Soltar quadril, coluna torácica e tornozelos com respiração nasal lenta para acelerar a remoção de fadiga residual.",
-        timeSlotLabelPt: "Pós-treino ou Noite",
-        eaImpactText: "+85 EA",
-        eaSignedDelta: 85,
+          "Liberação miofascial e amplitude articular nas articulações mais exigidas pela sua modalidade.",
+        timeSlotLabelPt: "Recuperação",
+        eaImpactText: "+80 EA",
+        eaSignedDelta: 80,
+        activityClass: "recovery",
       });
     } else {
       commitments.push({
-        id: `hab_hyd_${item.dateStr}`,
+        id: `hab_hyd_${dateStr}`,
         kind: "recharge_habit",
-        titlePt: "Hidratação Estruturada (35ml/kg) + Descompressão Vagal",
+        titlePt: "Hidratação (35–40 ml/kg) & Nutrição Pós-Treino",
         detailPt:
-          "Atingir a meta hídrica do dia e fazer 5 minutos de respiração 4s-6s para elevar a prontidão autonômica de amanhã.",
-        timeSlotLabelPt: "Ao longo do dia",
-        eaImpactText: "+75 EA",
-        eaSignedDelta: 75,
+          "Reposição de glicogênio, proteína e eletrólitos para manter prontidão no treino seguinte.",
+        timeSlotLabelPt: "Dia",
+        eaImpactText: "+70 EA",
+        eaSignedDelta: 70,
+        activityClass: "recovery",
       });
     }
 
     dailySchedule.push({
-      dateStr: item.dateStr,
-      dayNumberInPlan: i + 1,
-      jsDay: item.jsDay,
+      dateStr,
+      dayNumberInPlan: dayIdx + 1,
+      jsDay,
       weekdayShortPt: wMeta.shortPt,
       weekdayFullPt: wMeta.fullPt,
-      phase: item.phase,
+      phase,
       phaseLabelPt: pMeta.labelPt,
+      periodizationBlockCode,
       energyWaveLabelPt: pMeta.waveHighSchoolPt,
       projectedEa: curvedEa,
       expectedDrainEa,
       expectedRechargeEa,
       netDailyDeltaEa,
-      isWorkoutDay: item.isWorkoutDay,
-      isBlockedByPersonalCommitment: item.isBlocked,
-      isTargetEventDay: item.isEventDay,
+      isWorkoutDay,
+      isBlockedByPersonalCommitment: isBlocked,
+      isTargetEventDay: isEventDay,
+      primarySessionShortLabelPt,
       commitments,
     });
   }
 
-  // 3. Agrupamento em Marcos Semanais (Periodização em Blocos de Issurin, 2010)
+  // 3. Marcos Semanais baseados nos blocos reais da modalidade (`spec.periodizationPhases`)
   const weeklyMilestones: PlannedWeeklyMilestone[] = [];
   for (let w = 0; w < totalWeeks; w++) {
     const slice = dailySchedule.slice(w * 7, (w + 1) * 7);
@@ -582,40 +782,31 @@ export function planEnergeticGrowthCurve(
     const firstDay = slice[0];
     const lastDay = slice[slice.length - 1];
     const isLastWeek = w === totalWeeks - 1;
-    const isDeloadWeek = !isLastWeek && totalWeeks >= 4 && w % 4 === 3;
+    const isDeloadWeek = !isLastWeek && totalWeeks >= deloadFreq && w % deloadFreq === deloadFreq - 1;
 
-    let blockNamePt = "Bloco 1 · Construção de Base Energética";
-    let phase: EnergeticCyclePhase = "expansion";
-    let directivePt =
-      "Construa consistência nos treinos prescritos e não falhe no protocolo noturno de sono (+EA).";
-    let scientificNotePt =
-      "Fase de Acumulação (Issurin, 2010): expande a tolerância ao esforço e a base aeróbia/força.";
+    const blockCode: PeriodizationPhaseCode =
+      isLastWeek && mode === "competition"
+        ? "taper"
+        : isDeloadWeek
+          ? "deload"
+          : w < Math.max(1, Math.floor(totalWeeks * 0.35))
+            ? "base"
+            : w >= totalWeeks - 2 && totalWeeks >= 4
+              ? "peak"
+              : "build";
 
-    if (isLastWeek && mode === "competition") {
-      blockNamePt = `Semana Final · Polimento (Taper) & Ápice`;
-      phase = "peak";
-      directivePt =
-        "Reduza o volume dos treinos em ~45%, mantenha a velocidade dos movimentos e dobre o cuidado com sono e hidratação para disparar sua reserva até o pico.";
-      scientificNotePt =
-        "Efeito Tapering (Mujika & Padilla, 2003): dissipa a fadiga residual mantendo os ganhos neuromusculares, gerando o pico de EA.";
-    } else if (isDeloadWeek) {
-      blockNamePt = `Semana ${w + 1} · Absorção & Supercompensação`;
-      phase = "absorption";
-      directivePt =
-        "Semana regenerativa estratégica: reduza 1 série por exercício e priorize mobilidade para o corpo absorver o crescimento das semanas anteriores.";
-      scientificNotePt =
-        "Supercompensação (Kellmann, 2010): a adaptação física se concretiza durante a janela de alívio programado.";
-    } else if (w >= Math.floor(totalWeeks / 2) && totalWeeks >= 3) {
-      blockNamePt = `Semana ${w + 1} · Intensificação & Força Específica`;
-      phase = "expansion";
-      directivePt =
-        "Priorize alta qualidade técnica nos movimentos principais e cumpra os hábitos regenerativos pós-sessão.";
-      scientificNotePt =
-        "Fase de Transmutação (Issurin, 2010): converte a base construída em potência e eficiência específica.";
-    } else if (w % 2 === 1) {
-      blockNamePt = `Semana ${w + 1} · Estabilização & Ritmo`;
-      phase = "stabilization";
-    }
+    const modPhaseRule =
+      spec.periodizationPhases.find((p) => p.phase === blockCode) ||
+      spec.periodizationPhases[0];
+
+    const phase: EnergeticCyclePhase =
+      blockCode === "taper"
+        ? "peak"
+        : blockCode === "deload"
+          ? "absorption"
+          : blockCode === "base"
+            ? "stabilization"
+            : "expansion";
 
     const startEa =
       w === 0
@@ -627,7 +818,8 @@ export function planEnergeticGrowthCurve(
       weekNumber: w + 1,
       startDateStr: firstDay.dateStr,
       endDateStr: lastDay.dateStr,
-      blockNamePt,
+      blockNamePt: `Semana ${w + 1} · ${modPhaseRule.labelPt}`,
+      periodizationBlockCode: blockCode,
       phase,
       phaseLabelPt: PHASE_META[phase].labelPt,
       startEa,
@@ -639,60 +831,47 @@ export function planEnergeticGrowthCurve(
         (acc, d) => acc + d.expectedRechargeEa,
         0
       ),
-      directivePt,
-      scientificNotePt,
+      directivePt: modPhaseRule.directivePt,
+      scientificNotePt: `Foco: ${modPhaseRule.intensityFocusPt} (${spec.shortNamePt}).`,
     });
   }
 
-  // 4. Receita Executiva Literal ("Para atingir X em Y, faça X, Y, Z em tais dias")
-  const workoutDayNamesPt = workoutJsDays
-    .map((jsD) => getWeekdayMeta(jsD).shortPt)
-    .join(", ");
-  const restDayNamesPt = WEEKDAYS_MONDAY_FIRST.filter(
-    (w) => !workoutJsSet.has(w.jsDay)
-  )
-    .map((w) => w.shortPt)
-    .join(", ");
-
-  const taperStartStr = addDaysIso(targetDateStr, -taperDaysCount);
-  const taperStartFormatted = new Date(
-    `${taperStartStr}T12:00:00Z`
-  ).toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" });
+  // 4. Arquitetura Integrada do Ciclo (substitui definitivamente a antiga receita X/Y/Z)
+  const taperStartDateStr = addDaysIso(targetDateStr, -taperDaysCount);
   const targetDateFormatted = new Date(
     `${targetDateStr}T12:00:00Z`
   ).toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" });
 
-  const executiveRecipe = {
-    headlinePt: `Para sair de ${currentEa} EA e atingir ${projectedPeakEa} EA (+${effectiveTotalGainEa} EA) em ${targetDateFormatted}:`,
+  const targetKpiSummaryPt =
+    typeof input.targetKpiValue === "number" && !Number.isNaN(input.targetKpiValue)
+      ? `${primaryKpiDef.shortLabelPt} → ${input.targetKpiValue} ${input.kpiUnit || primaryKpiDef.unit}`
+      : null;
+
+  const compFreq =
+    spec.complementaryStrength.recommendedFrequencyPerWeek[experienceLevel];
+
+  const cycleBlueprint: ModalityCycleBlueprint = {
+    headlinePt: `Plano de ${spec.shortNamePt} (${totalWeeks} sem até ${targetDateFormatted})${
+      targetKpiSummaryPt ? ` · Meta: ${targetKpiSummaryPt}` : ""
+    }`,
     subheadlinePt:
-      "Siga estes 3 compromissos coordenados no seu calendário — o Selye lembrará você a cada dia:",
-    pillars: [
-      {
-        code: "stimulus_x" as const,
-        badgePt: "PASSO X · ESTÍMULO & FORÇA",
-        titlePt: `${targetDaysPerWeek} Sessões Estruturadas por Semana`,
-        actionSummaryPt: `Treinar ${modalityLabelPt} às ${workoutDayNamesPt}, progredindo cargas nas semanas de Expansão e respeitando o esforço recomendado de cada dia.`,
-        scheduleDaysLabelPt: `Dias de treino: ${workoutDayNamesPt}`,
-      },
-      {
-        code: "recharge_y" as const,
-        badgePt: "PASSO Y · RECARGA DIÁRIA (+EA)",
-        titlePt: `Somar +85 a +120 EA/dia em Hábitos Regenerativos`,
-        actionSummaryPt: `Proteger suas janelas de absorção (${
-          restDayNamesPt || "Dom"
-        }) e cumprir 1 protocolo diário de recarga (Sono 7h30+, Mobilidade 15 min ou Hidratação) para expandir sua bateria corporal.`,
-        scheduleDaysLabelPt: `Recuperação prioritária: ${
-          restDayNamesPt || "Dom"
-        }`,
-      },
-      {
-        code: "taper_z" as const,
-        badgePt: "PASSO Z · POLIMENTO & SUPERCOMPENSAÇÃO",
-        titlePt: `Ativar o Polimento (Taper) a partir de ${taperStartFormatted}`,
-        actionSummaryPt: `Nos últimos ${taperDaysCount} dias antes de ${targetDateFormatted}, reduzir o volume dos treinos em 45% mantendo os hábitos +EA. Isso zera a fadiga acumulada e faz seu corpo saltar para ${projectedPeakEa} EA no dia-alvo.`,
-        scheduleDaysLabelPt: `Janela de Ápice: ${taperStartFormatted} a ${targetDateFormatted}`,
-      },
-    ],
+      complementaryModalityCode === "strength" && modalityCode !== "strength"
+        ? `Integra sessões específicas de ${spec.shortNamePt} + fortalecimento complementar (${compFreq.min}–${compFreq.max}×/sem) com a EA modulando sua prontidão diária.`
+        : `Sessões estruturadas de ${spec.shortNamePt} distribuídas nos seus ${targetDaysPerWeek} dias disponíveis, com a EA modulando volume e recuperação.`,
+    primaryModalityCode: modalityCode,
+    primaryModalityNamePt: spec.namePt,
+    complementaryModalityCode,
+    complementaryProtocolSummaryPt:
+      complementaryModalityCode === "strength" && modalityCode !== "strength"
+        ? spec.complementaryStrength.objectiveHeadlinePt
+        : null,
+    primaryKpiLabelPt: primaryKpiDef.labelPt,
+    targetKpiSummaryPt,
+    taperStartDateStr,
+    taperDaysCount,
+    eaModulationRulePt:
+      "Em dias de EA/prontidão baixa no Check-in Matinal, o Selye suaviza automaticamente o volume previsto para proteger sua curva até a data-alvo.",
+    weeklySlots,
   };
 
   const todayEntry = dailySchedule[0];
@@ -700,7 +879,10 @@ export function planEnergeticGrowthCurve(
   return {
     mode,
     eventTitle,
+    modalityCode,
     modalityLabelPt,
+    complementaryModalityCode,
+    primaryKpiKey: primaryKpiDef.key,
     startDateStr,
     targetDateStr,
     totalDays,
@@ -716,7 +898,7 @@ export function planEnergeticGrowthCurve(
     todayPhase: todayEntry.phase,
     todayPhaseLabelPt: todayEntry.phaseLabelPt,
     todayEnergySummaryPt: todayEntry.energyWaveLabelPt,
-    executiveRecipe,
+    cycleBlueprint,
     weeklyMilestones,
     dailySchedule,
   };

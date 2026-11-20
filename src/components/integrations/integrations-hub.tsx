@@ -9,7 +9,9 @@ import {
   importExternalActivityFile,
   saveBaselineCalibration,
   type IntegrationStatus,
+  type ImportedActivitySummaryItem,
 } from "@/actions/integrations";
+import type { ActivityClassChoice } from "@/core/integrations/activity-classifier";
 import {
   updateNotificationPreference,
   sendTestOrDigestEmail,
@@ -80,9 +82,14 @@ export function IntegrationsHub({
   );
   const [syncFeedback, setSyncFeedback] = useState<Record<string, string>>({});
   const [importBanner, setImportBanner] = useState<string | null>(null);
+  const [importedItems, setImportedItems] = useState<
+    ImportedActivitySummaryItem[]
+  >([]);
   const [selectedProvider, setSelectedProvider] = useState<
     "strava" | "apple_health" | "health_connect" | "garmin"
   >("strava");
+  const [importClassMode, setImportClassMode] =
+    useState<ActivityClassChoice>("auto");
   const [isPending, startTransition] = useTransition();
 
   // Calibração Rápida de Perfil (< 2 min)
@@ -144,7 +151,9 @@ export function IntegrationsHub({
       if (result.success) {
         setSyncFeedback((prev) => ({
           ...prev,
-          [provider]: `✓ Atividade importada e deduplicada (${result.syncedActivityId})`,
+          [provider]: `✓ Atividade importada como ${
+            result.classificationBadgePt || "Solta"
+          } (${result.syncedActivityId})`,
         }));
       } else if (result.isDuplicate) {
         setSyncFeedback((prev) => ({
@@ -162,18 +171,19 @@ export function IntegrationsHub({
 
   const processImportedText = (fileName: string, content: string) => {
     setImportBanner(null);
+    setImportedItems([]);
     startTransition(async () => {
       try {
         const res = await importExternalActivityFile({
           fileName,
           content,
           provider: selectedProvider,
+          activityClassOverride: importClassMode,
         });
         if (res.importedCount > 0) {
+          setImportedItems(res.importedItems || []);
           setImportBanner(
-            `Importação concluída: ${res.importedCount} sessão(ões) adicionada(s) [${res.importedTitles.join(
-              ", "
-            )}]${
+            `Importação concluída: ${res.importedCount} sessão(ões) adicionada(s) (-${res.totalEaAdded} EA total)${
               res.skippedDuplicatesCount > 0
                 ? ` · ${res.skippedDuplicatesCount} duplicata(s) ignorada(s)`
                 : ""
@@ -210,7 +220,7 @@ export function IntegrationsHub({
         restingHrBpm: restingHr ? Number(restingHr) : null,
       });
       setCalibrationBanner(
-        "Seu perfil fisiológico foi recalibrado. Sua Reserva de Energia Adaptativa (EA) e sua Decisão do Dia já refletem esses parâmetros."
+        "Seu perfil foi atualizado. Sua Bateria do Corpo (EA) e sua sugestão do dia já refletem esses ajustes."
       );
       router.refresh();
     });
@@ -340,21 +350,37 @@ export function IntegrationsHub({
               Importar Sessão (.GPX, .TCX, .CSV ou .JSON)
             </h2>
             <p className="text-xs text-muted mt-1">
-              O Selye calcula distância por coordenadas GPS (Haversine), duração real, frequência cardíaca média e converte automaticamente em Energia Adaptativa (EA).
+              O Selye calcula distância via GPS, duração real, batimentos cardíacos médios e converte automaticamente em Energia do Corpo (EA).
             </p>
           </div>
 
-          <select
-            value={selectedProvider}
-            onChange={(e) => setSelectedProvider(e.target.value as any)}
-            aria-label="Origem do arquivo importado"
-            className="input h-9 sm:w-48 text-xs font-mono shrink-0"
-          >
-            <option value="strava">Origem: Strava</option>
-            <option value="garmin">Origem: Garmin Connect</option>
-            <option value="apple_health">Origem: Apple Health</option>
-            <option value="health_connect">Origem: Health Connect</option>
-          </select>
+          <div className="flex flex-wrap sm:flex-nowrap items-center gap-2 shrink-0">
+            <select
+              value={selectedProvider}
+              onChange={(e) => setSelectedProvider(e.target.value as any)}
+              aria-label="Origem do arquivo importado"
+              className="input h-9 sm:w-44 text-xs font-mono shrink-0"
+            >
+              <option value="strava">Origem: Strava</option>
+              <option value="garmin">Origem: Garmin Connect</option>
+              <option value="apple_health">Origem: Apple Health</option>
+              <option value="health_connect">Origem: Health Connect</option>
+            </select>
+
+            <select
+              value={importClassMode}
+              onChange={(e) =>
+                setImportClassMode(e.target.value as ActivityClassChoice)
+              }
+              aria-label="Classificação das atividades importadas"
+              className="input h-9 sm:w-52 text-xs font-mono shrink-0"
+            >
+              <option value="auto">Classificação: Automática</option>
+              <option value="casual">Marcar como Atividade Solta</option>
+              <option value="serious">Marcar como Modalidade</option>
+              <option value="complementary">Marcar como Suporte</option>
+            </select>
+          </div>
         </div>
 
         <input
@@ -396,9 +422,48 @@ export function IntegrationsHub({
         {importBanner && (
           <div
             role="status"
-            className="rounded-xl border border-profundo bg-lima/20 px-4 py-3 text-xs text-foreground font-mono"
+            className="rounded-xl border border-profundo bg-lima/20 px-4 py-3 text-xs text-foreground flex flex-col gap-2"
           >
-            {importBanner}
+            <span className="font-mono font-semibold">{importBanner}</span>
+            {importedItems.length > 0 && (
+              <div className="flex flex-col gap-1.5 pt-1 border-t border-profundo/20">
+                {importedItems.map((item, idx) => (
+                  <div
+                    key={`${item.title}-${item.localDate}-${idx}`}
+                    className="flex flex-col sm:flex-row sm:items-center justify-between gap-1 text-[11px]"
+                  >
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span
+                        className={`px-2 py-0.5 rounded-full font-mono text-[10px] font-semibold ${
+                          item.activityClass === "serious"
+                            ? "bg-lima text-grafite"
+                            : item.activityClass === "complementary"
+                              ? "bg-profundo/25 text-foreground"
+                              : "bg-foreground/10 text-muted"
+                        }`}
+                      >
+                        {item.titlePt}
+                      </span>
+                      <span className="font-semibold text-foreground">
+                        {item.title}
+                      </span>
+                      <span className="text-muted font-mono">
+                        {item.durationMinutes} min
+                        {item.distanceKm ? ` · ${item.distanceKm} km` : ""} · -
+                        {item.loadEa} EA
+                      </span>
+                    </div>
+                    <span className="text-muted text-[10px]">
+                      {item.activityClass === "casual"
+                        ? "Energia + consistência · Indicadores preservados"
+                        : item.activityClass === "complementary"
+                          ? "Energia + consistência + fortalecimento"
+                          : "Atualiza indicadores + energia + consistência"}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         )}
       </section>
@@ -418,7 +483,7 @@ export function IntegrationsHub({
             </div>
             <h2 className="t-h2 mt-1">Seu Perfil Fisiológico Base</h2>
             <p className="text-xs text-muted mt-1">
-              Ajuste seus parâmetros base para dimensionar sua Capacidade Semanal de Energia Adaptativa (EA) e sua Decisão do Dia.
+              Ajuste seus dados básicos para calibrar a bateria semanal do seu corpo (EA) e a sugestão do dia.
             </p>
           </div>
 
@@ -768,7 +833,7 @@ export function IntegrationsHub({
           </h3>
         </div>
         <p className="text-xs text-muted leading-relaxed">
-          Quando uma mesma atividade é enviada por mais de uma fonte (por exemplo, um relógio Garmin conectado simultaneamente ao Strava e ao Apple Health), o Selye identifica a janela temporal coincidente e consolida os dados em um único registro, preservando a precisão da sua Energia Adaptativa (EA) e do seu streak semanal.
+          Quando uma mesma atividade chega de mais de um app (por exemplo, um relógio Garmin conectado ao Strava e ao Apple Health), o Selye junta tudo em um único registro, mantendo a precisão da sua Energia do Corpo (EA) e da sua sequência semanal.
         </p>
       </section>
     </div>

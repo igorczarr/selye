@@ -1,6 +1,6 @@
 ﻿import { Suspense } from "react";
 import Link from "next/link";
-import { ArrowUpRight, History } from "lucide-react";
+import { ArrowUpRight, History, Sparkles } from "lucide-react";
 import { Navbar } from "@/components/navigation/navbar";
 import { getDashboardData } from "@/actions/workout";
 import { getActivePlanningSnapshot } from "@/actions/planning";
@@ -10,6 +10,7 @@ import { MetricsSwitcherCard } from "@/components/home/metrics-switcher-card";
 import { DailyDecisionCard } from "@/components/home/daily-decision-card";
 import { WelcomeAutonomyGuide } from "@/components/home/welcome-autonomy-guide";
 import { TodayPlanWidget } from "@/components/home/today-plan-widget";
+import { getActivityClassPresentation } from "@/core/integrations/activity-classifier";
 
 export const instant = false;
 
@@ -33,6 +34,35 @@ async function DashboardContent() {
 
   return (
     <div className="flex flex-col gap-6 sm:gap-7">
+      {/* BANNER DE CALIBRAÇÃO CIENTÍFICA DE EA & MODALIDADE (Fase 2) */}
+      {!stats.onboardingCompleted && (
+        <section className="card p-4 sm:p-5 border-profundo/50 bg-lima/10 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div className="flex items-start gap-3">
+            <span className="w-9 h-9 rounded-xl bg-lima text-grafite flex items-center justify-center shrink-0 mt-0.5">
+              <Sparkles size={17} />
+            </span>
+            <div>
+              <span className="t-label !text-accent-text">
+                Personalização Rápida · ~2 min
+              </span>
+              <h2 className="text-sm font-semibold text-foreground mt-0.5">
+                Ajuste sua Bateria do Corpo (EA) e sua modalidade principal
+              </h2>
+              <p className="text-xs text-muted mt-0.5">
+                Conte sua modalidade, rotina, sono e estresse do dia a dia para o Selye adaptar seus indicadores, fortalecimento e energia diária.
+              </p>
+            </div>
+          </div>
+          <Link
+            href="/onboarding"
+            className="btn btn-primary h-9 px-4 text-xs font-mono font-bold shrink-0 self-start sm:self-center"
+          >
+            <span>Iniciar Calibração</span>
+            <ArrowUpRight size={14} />
+          </Link>
+        </section>
+      )}
+
       {/* GUIA DE AUTONOMIA EM 3 PASSOS (Para iniciantes e novos usuários) */}
       <WelcomeAutonomyGuide
         totalCompletedWorkouts={stats.totalCompletedWorkouts}
@@ -213,30 +243,47 @@ async function DashboardContent() {
             </div>
           ) : (
             <div className="divide-y divide-line">
-              {data.recentSessions.map((s) => (
-                <div
-                  key={s.id}
-                  className="py-3 first:pt-1 last:pb-0 flex items-center justify-between gap-3"
-                >
-                  <div className="min-w-0">
-                    <p className="font-semibold text-xs sm:text-sm truncate text-foreground">
-                      {s.title}
-                    </p>
-                    <p className="t-aux text-muted mt-0.5">
-                      {s.modalityLabel} · Esforço {s.rpeSession || 8}/10 ·{" "}
-                      <span className="font-mono text-accent-text font-semibold" title="Energia do corpo utilizada na atividade">
-                        -{s.loadUa} EA
-                      </span>
-                    </p>
+              {data.recentSessions.map((s) => {
+                const classMeta = getActivityClassPresentation(s.activityClass);
+                return (
+                  <div
+                    key={s.id}
+                    className="py-3 first:pt-1 last:pb-0 flex items-center justify-between gap-3"
+                  >
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-1.5 min-w-0">
+                        <p className="font-semibold text-xs sm:text-sm truncate text-foreground">
+                          {s.title}
+                        </p>
+                        <span
+                          title={classMeta.impactSummaryPt}
+                          className={`shrink-0 px-1.5 py-0.5 rounded text-[9px] font-mono font-semibold uppercase tracking-wide ${
+                            classMeta.activityClass === "serious"
+                              ? "bg-lima/25 text-accent-text"
+                              : classMeta.activityClass === "complementary"
+                                ? "bg-profundo/20 text-foreground"
+                                : "bg-foreground/8 text-muted"
+                          }`}
+                        >
+                          {classMeta.badgePt}
+                        </span>
+                      </div>
+                      <p className="t-aux text-muted mt-0.5">
+                        {s.modalityLabel} · Esforço {s.rpeSession || 8}/10 ·{" "}
+                        <span className="font-mono text-accent-text font-semibold" title="Energia do corpo utilizada na atividade">
+                          -{s.loadUa} EA
+                        </span>
+                      </p>
+                    </div>
+                    <span className="t-data text-[11px] text-muted shrink-0">
+                      {new Date(s.finishedAt || s.startedAt).toLocaleDateString(
+                        "pt-BR",
+                        { day: "2-digit", month: "short" }
+                      )}
+                    </span>
                   </div>
-                  <span className="t-data text-[11px] text-muted shrink-0">
-                    {new Date(s.finishedAt || s.startedAt).toLocaleDateString(
-                      "pt-BR",
-                      { day: "2-digit", month: "short" }
-                    )}
-                  </span>
-                </div>
-              ))}
+                );
+              })}
             </div>
           )}
         </aside>

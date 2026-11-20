@@ -2,12 +2,117 @@
 
 import { db } from "@/db";
 import * as schema from "@/db/schema";
-import { eq, desc, asc, and } from "drizzle-orm";
+import { eq, desc, asc, and, inArray } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { connection } from "next/server";
 import { getOrCreateDemoUser } from "./workout";
 import { dispatchSmartNotification } from "./notifications";
 import { sortRoutinesChronologically } from "@/lib/week";
+import {
+  resolveCoreModalityCode,
+  type CoreModalityCode,
+  type ExperienceLevel,
+} from "@/core/modalities";
+import { analyzeRoutineEffect } from "@/core/routines";
+
+export async function getAthleteModalityContextForRoutines(): Promise<{
+  primaryModality: CoreModalityCode;
+  experienceLevel: ExperienceLevel;
+}> {
+  const user = await getOrCreateDemoUser();
+  const [profileRows, userSportRows] = await Promise.all([
+    db
+      .select()
+      .from(schema.profiles)
+      .where(eq(schema.profiles.userId, user.id))
+      .limit(1),
+    db
+      .select({
+        role: schema.userSports.role,
+        isPriority: schema.userSports.isPriority,
+        experienceLevel: schema.userSports.experienceLevel,
+        code: schema.sports.code,
+      })
+      .from(schema.userSports)
+      .innerJoin(schema.sports, eq(schema.userSports.sportId, schema.sports.id))
+      .where(eq(schema.userSports.userId, user.id)),
+  ]);
+
+  const primarySportRow =
+    userSportRows.find((s) => s.role === "primary") ||
+    userSportRows.find((s) => s.isPriority) ||
+    userSportRows[0];
+
+  const primaryModality: CoreModalityCode =
+    profileRows[0]?.eaCalibration?.inputs?.primaryModality ||
+    resolveCoreModalityCode(primarySportRow?.code) ||
+    "strength";
+
+  const validLevels: ExperienceLevel[] = [
+    "beginner",
+    "intermediate",
+    "advanced",
+    "competitive",
+  ];
+  const rawLevel = (profileRows[0]?.experienceLevel ||
+    primarySportRow?.experienceLevel ||
+    "intermediate") as ExperienceLevel;
+  const experienceLevel: ExperienceLevel = validLevels.includes(rawLevel)
+    ? rawLevel
+    : "intermediate";
+
+  return { primaryModality, experienceLevel };
+}
+
+async function computeRoutineEffectSnapshotForInput(
+  input: CreateRoutineInput,
+  athleteCtx: { primaryModality: CoreModalityCode; experienceLevel: ExperienceLevel }
+) {
+  const exIds = Array.from(new Set(input.exercises.map((e) => e.exerciseId)));
+  const catalogRows =
+    exIds.length > 0
+      ? await db
+          .select()
+          .from(schema.exercises)
+          .where(inArray(schema.exercises.id, exIds))
+      : [];
+  const exMap = new Map(catalogRows.map((e) => [e.id, e]));
+
+  const analyzed = analyzeRoutineEffect({
+    routine: {
+      title: input.title,
+      modalityCode: input.modalityCode || "strength",
+      dayOfWeek: input.dayOfWeek ?? null,
+      prescriptions: input.exercises.map((ex) => {
+        const meta = exMap.get(ex.exerciseId);
+        return {
+          exerciseNamePt: meta?.namePt || "Exercício",
+          exerciseNameEn: meta?.nameEn || null,
+          modalityCode: meta?.modalityCode || input.modalityCode || "strength",
+          secondaryMuscles: meta?.secondaryMuscles || null,
+          targetSets: ex.targetSets,
+          targetReps: ex.targetReps,
+          restSeconds: ex.restSeconds,
+          setType: ex.setType,
+        };
+      }),
+    },
+    athletePrimaryModality: athleteCtx.primaryModality,
+    experienceLevel: athleteCtx.experienceLevel,
+  });
+
+  const [sportRow] = await db
+    .select({ id: schema.sports.id })
+    .from(schema.sports)
+    .where(eq(schema.sports.code, input.modalityCode || "strength"))
+    .limit(1);
+
+  return {
+    trainingEffect: analyzed.snapshot,
+    sportId: sportRow?.id || null,
+    targetPrimaryModalityCode: athleteCtx.primaryModality,
+  };
+}
 
 export interface CreateRoutineInput {
   title: string;
@@ -32,14 +137,19 @@ export interface CreateRoutineInput {
  */
 export async function createRoutine(input: CreateRoutineInput) {
   const user = await getOrCreateDemoUser();
+  const athleteCtx = await getAthleteModalityContextForRoutines();
+  const effectMeta = await computeRoutineEffectSnapshotForInput(input, athleteCtx);
 
-  // 1. Cria programa
+  // 1. Cria programa com snapshot de efeito fisiológico (§Fase 4)
   const [program] = await db
     .insert(schema.trainingPrograms)
     .values({
       title: input.title,
       description: input.description,
       modalityCode: input.modalityCode || "strength",
+      sportId: effectMeta.sportId,
+      targetPrimaryModalityCode: effectMeta.targetPrimaryModalityCode,
+      trainingEffect: effectMeta.trainingEffect,
       creatorUserId: user.id,
       isArchived: false,
     })
@@ -405,12 +515,18 @@ export async function updateRoutine(
     throw new Error("Ficha não encontrada ou sem permissão para editar.");
   }
 
+  const athleteCtx = await getAthleteModalityContextForRoutines();
+  const effectMeta = await computeRoutineEffectSnapshotForInput(input, athleteCtx);
+
   await db
     .update(schema.trainingPrograms)
     .set({
       title: input.title,
       description: input.description,
       modalityCode: input.modalityCode || "strength",
+      sportId: effectMeta.sportId,
+      targetPrimaryModalityCode: effectMeta.targetPrimaryModalityCode,
+      trainingEffect: effectMeta.trainingEffect,
       updatedAt: new Date(),
     })
     .where(eq(schema.trainingPrograms.id, program.id));

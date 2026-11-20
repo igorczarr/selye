@@ -17,6 +17,13 @@ import {
   type ExerciseCategoryId,
 } from "@/core/catalog/exercise-categories";
 import {
+  CORE_MODALITY_CODES,
+  MODALITY_REGISTRY,
+  type CoreModalityCode,
+  type ExperienceLevel,
+} from "@/core/modalities";
+import { analyzeRoutineEffect } from "@/core/routines";
+import {
   Plus,
   Trash2,
   ArrowUp,
@@ -26,6 +33,9 @@ import {
   AlertCircle,
   Info,
   Clock,
+  Sparkles,
+  Target,
+  Zap,
 } from "lucide-react";
 
 interface ExerciseOption {
@@ -66,9 +76,13 @@ interface InitialRoutineData {
 export function RoutineBuilder({
   availableExercises,
   initialRoutine,
+  athletePrimaryModality = "strength",
+  experienceLevel = "intermediate",
 }: {
   availableExercises: ExerciseOption[];
   initialRoutine?: InitialRoutineData;
+  athletePrimaryModality?: CoreModalityCode;
+  experienceLevel?: ExperienceLevel;
 }) {
   const router = useRouter();
   const { open: openExerciseSheet } = useExerciseSheet();
@@ -225,8 +239,91 @@ export function RoutineBuilder({
     });
   };
 
+  const liveRoutineEffect = useMemo(() => {
+    const exMap = new Map(availableExercises.map((e) => [e.id, e]));
+    return analyzeRoutineEffect({
+      routine: {
+        title: title || "Nova Ficha",
+        modalityCode,
+        dayOfWeek,
+        prescriptions: selectedItems.map((item) => {
+          const meta = exMap.get(item.exerciseId);
+          return {
+            exerciseNamePt: item.exerciseName || meta?.namePt || "Exercício",
+            exerciseNameEn: meta?.nameEn || null,
+            modalityCode: meta?.modalityCode || modalityCode,
+            secondaryMuscles: meta?.secondaryMuscles || null,
+            targetSets: item.targetSets,
+            targetReps: item.targetReps,
+            restSeconds: item.restSeconds,
+            setType: item.setType,
+          };
+        }),
+      },
+      athletePrimaryModality,
+      experienceLevel,
+    });
+  }, [
+    availableExercises,
+    title,
+    modalityCode,
+    dayOfWeek,
+    selectedItems,
+    athletePrimaryModality,
+    experienceLevel,
+  ]);
+
   return (
     <form onSubmit={handleSubmit} className="flex flex-col gap-6 fade-up" noValidate>
+      {/* Preview Ao Vivo: O que esta ficha vai entregar (§Fase 4) */}
+      <section
+        className={`card p-4 sm:p-5 border flex flex-col gap-2.5 ${
+          liveRoutineEffect.alignmentTier === "high"
+            ? "border-profundo/45 bg-lima/10"
+            : liveRoutineEffect.alignmentTier === "caution_overload"
+              ? "border-amber-500/45 bg-amber-500/10"
+              : "border-line bg-foreground/[0.02]"
+        }`}
+      >
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div className="flex items-center gap-2">
+            <Sparkles size={14} className="text-accent-text shrink-0" />
+            <span className="t-label !text-accent-text">
+              O que esta ficha entrega para {MODALITY_REGISTRY[athletePrimaryModality].shortNamePt}
+            </span>
+          </div>
+          <span className="px-2.5 py-0.5 rounded-full text-[10px] font-mono font-bold bg-surface border border-line text-foreground inline-flex items-center gap-1">
+            <Target size={11} className="text-accent-text" />
+            <span>{liveRoutineEffect.alignmentBadgePt}</span>
+          </span>
+        </div>
+
+        <p className="text-xs font-semibold text-foreground">
+          {liveRoutineEffect.headlinePt}
+        </p>
+        <p className="text-xs text-muted leading-relaxed">
+          {liveRoutineEffect.alignmentExplanationPt}
+        </p>
+
+        {liveRoutineEffect.snapshot.estimatedTotalSets > 0 && (
+          <div className="flex flex-wrap items-center gap-3 pt-1.5 border-t border-line/60 text-[11px] font-mono text-muted">
+            <span className="inline-flex items-center gap-1 text-foreground">
+              <Zap size={12} className="text-accent-text" />~
+              {liveRoutineEffect.snapshot.estimatedLoadUa} EA estimados
+            </span>
+            <span>· ~{liveRoutineEffect.snapshot.estimatedDurationMin} min</span>
+            <span>· {liveRoutineEffect.snapshot.estimatedTotalSets} séries</span>
+            {liveRoutineEffect.topCategories.slice(0, 4).map((c) => (
+              <span
+                key={c.categoryId}
+                className="px-2 py-0.5 rounded-full bg-surface border border-line text-[10px]"
+              >
+                {c.labelPt}: {c.sets}s
+              </span>
+            ))}
+          </div>
+        )}
+      </section>
       {errorMessage && (
         <div
           role="alert"
@@ -268,11 +365,11 @@ export function RoutineBuilder({
               onChange={(e) => setModalityCode(e.target.value)}
               className="input h-11 text-sm"
             >
-              <option value="strength">Musculação</option>
-              <option value="beach_volleyball">Vôlei de Praia</option>
-              <option value="calisthenics">Calistenia</option>
-              <option value="functional">Funcional</option>
-              <option value="running">Corrida</option>
+              {CORE_MODALITY_CODES.map((code) => (
+                <option key={code} value={code}>
+                  {MODALITY_REGISTRY[code].shortNamePt}
+                </option>
+              ))}
             </select>
           </div>
         </div>

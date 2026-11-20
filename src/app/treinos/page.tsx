@@ -2,12 +2,22 @@ import { Suspense } from "react";
 import { Navbar } from "@/components/navigation/navbar";
 import { RoutinesHub } from "@/components/routines/routines-hub";
 import { getDashboardData } from "@/actions/workout";
+import { getAthleteModalityContextForRoutines } from "@/actions/routines";
 
 export const instant = false;
 
 async function RoutinesList() {
-  const data = await getDashboardData();
-  return <RoutinesHub routines={data.routines} />;
+  const [data, athleteCtx] = await Promise.all([
+    getDashboardData(),
+    getAthleteModalityContextForRoutines(),
+  ]);
+  return (
+    <RoutinesHub
+      routines={data.routines}
+      athletePrimaryModality={athleteCtx.primaryModality}
+      experienceLevel={athleteCtx.experienceLevel}
+    />
+  );
 }
 
 function RoutinesSkeleton() {

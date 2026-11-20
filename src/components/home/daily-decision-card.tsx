@@ -69,7 +69,7 @@ const DIMENSIONS: {
   },
   {
     key: "muscleFreshness",
-    label: "Estado Muscular (Sem Dor/DOMS)",
+    label: "Corpo & Musculatura",
     icon: Activity,
     levels: [
       { value: 1, short: "1", desc: "Dor intensa / musculatura travada" },
@@ -224,7 +224,7 @@ export function DailyDecisionCard({
             <div className="min-w-0 flex-1 flex flex-col justify-between gap-2">
               <div>
                 <span className="text-[10px] font-mono uppercase tracking-wider text-nevoa block">
-                  Reserva Adaptativa
+                  Bateria do Corpo
                 </span>
                 <p className="t-data text-xl font-bold text-lima leading-tight mt-0.5">
                   {adaptiveProfile
@@ -272,6 +272,11 @@ export function DailyDecisionCard({
                 >
                   {decision.badgeLabel}
                 </span>
+                {decision.modalityContextBadge && (
+                  <span className="px-2 py-0.5 rounded-full text-[10px] font-mono font-medium border border-line bg-foreground/[0.04] text-muted">
+                    {decision.modalityContextBadge}
+                  </span>
+                )}
                 {decision.hasCheckinToday && (
                   <span className="inline-flex items-center gap-1 text-[11px] font-mono text-muted">
                     <ShieldCheck size={12} className="text-accent-text" />
@@ -293,7 +298,7 @@ export function DailyDecisionCard({
             <div className="rounded-xl bg-foreground/[0.03] border border-line px-4 py-3 flex items-start justify-between gap-3">
               <p className="text-xs text-foreground leading-relaxed">
                 <span className="font-mono text-[10px] uppercase tracking-wider text-accent-text font-semibold mr-1.5">
-                  Diretriz:
+                  Sugestão:
                 </span>
                 {decision.suggestedAction}
               </p>
@@ -355,7 +360,7 @@ export function DailyDecisionCard({
                 type="button"
                 onClick={() => setOpenRechargeModal(true)}
                 className="btn btn-dark h-9 px-3 text-xs font-mono w-full"
-                title="Protocolos guiados que aumentam sua Reserva de Energia Adaptativa (+EA)"
+                title="Hábitos simples que recarregam a bateria do seu corpo (+EA)"
               >
                 <BatteryCharging size={14} className="text-lima shrink-0" />
                 <span className="truncate">Recarregar +EA</span>
@@ -388,7 +393,7 @@ export function DailyDecisionCard({
               </span>
               <h2 className="t-h2 mt-0.5">Como seu corpo acordou hoje?</h2>
               <p className="text-xs text-muted mt-0.5">
-                Toque de 1 a 5 em cada eixo para calibrar sua Decisão do Dia e sua Reserva de Energia Adaptativa (EA).
+                Toque de 1 a 5 em cada item para ajustar sua sugestão de hoje e a bateria do seu corpo (EA).
               </p>
             </div>
             <button

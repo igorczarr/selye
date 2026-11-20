@@ -4,6 +4,7 @@ import Link from "next/link";
 import { ArrowLeft } from "lucide-react";
 import { Navbar } from "@/components/navigation/navbar";
 import { RoutineBuilder } from "@/components/routines/routine-builder";
+import { getAthleteModalityContextForRoutines } from "@/actions/routines";
 import { db } from "@/db";
 import * as schema from "@/db/schema";
 
@@ -11,19 +12,28 @@ export const instant = false;
 
 async function NewRoutineLoader() {
   await connection();
-  const catalogExercises = await db
-    .select({
-      id: schema.exercises.id,
-      namePt: schema.exercises.namePt,
-      nameEn: schema.exercises.nameEn,
-      modalityCode: schema.exercises.modalityCode,
-      secondaryMuscles: schema.exercises.secondaryMuscles,
-    })
-    .from(schema.exercises)
-    .orderBy(schema.exercises.namePt)
-    .limit(250);
+  const [catalogExercises, athleteCtx] = await Promise.all([
+    db
+      .select({
+        id: schema.exercises.id,
+        namePt: schema.exercises.namePt,
+        nameEn: schema.exercises.nameEn,
+        modalityCode: schema.exercises.modalityCode,
+        secondaryMuscles: schema.exercises.secondaryMuscles,
+      })
+      .from(schema.exercises)
+      .orderBy(schema.exercises.namePt)
+      .limit(250),
+    getAthleteModalityContextForRoutines(),
+  ]);
 
-  return <RoutineBuilder availableExercises={catalogExercises} />;
+  return (
+    <RoutineBuilder
+      availableExercises={catalogExercises}
+      athletePrimaryModality={athleteCtx.primaryModality}
+      experienceLevel={athleteCtx.experienceLevel}
+    />
+  );
 }
 
 export default function NewRoutinePage() {

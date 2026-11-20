@@ -193,8 +193,8 @@ export function MetricsSwitcherCard({
 
           <p className="t-aux text-muted">
             {stats.monthlyVolumeKg > 0
-              ? "Tonelagem mecânica acumulada nas séries válidas"
-              : "Conclua séries com carga (kg) para medir tonelagem"}
+              ? "Peso total levantado nas séries concluídas"
+              : "Conclua séries com carga (kg) para acompanhar o peso levantado"}
           </p>
         </div>
       )}

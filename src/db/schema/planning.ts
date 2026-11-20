@@ -5,24 +5,36 @@ import {
   timestamp,
   boolean,
   integer,
+  doublePrecision,
   date,
   jsonb,
 } from "drizzle-orm/pg-core";
 import { users } from "./identity";
+import { sports } from "./sports";
+import { workoutTemplates } from "./training";
 
 /**
- * Meta ou Competição Ativa no Calendário Perene de Ciclo Energético (§Fase 18)
+ * Meta ou Competição Ativa no Calendário Perene Integrado por Modalidade (§Fase 1 / §Fase 18)
  */
 export const planningGoals = pgTable("planning_goals", {
   id: uuid("id").defaultRandom().primaryKey(),
   userId: uuid("user_id")
     .notNull()
     .references(() => users.id, { onDelete: "cascade" }),
+  sportId: uuid("sport_id").references(() => sports.id, {
+    onDelete: "set null",
+  }),
+  modalityCode: text("modality_code").default("strength").notNull(),
+  complementaryModalityCode: text("complementary_modality_code"),
   mode: text("mode").default("wellness_constancy").notNull(), // "competition" | "wellness_constancy"
   eventTitle: text("event_title").notNull(),
   modalityLabel: text("modality_label")
     .default("Multimodal & Força")
     .notNull(),
+  primaryKpiKey: text("primary_kpi_key"),
+  baselineKpiValue: doublePrecision("baseline_kpi_value"),
+  targetKpiValue: doublePrecision("target_kpi_value"),
+  kpiUnit: text("kpi_unit"),
   startDate: date("start_date").notNull(), // YYYY-MM-DD
   targetDate: date("target_date").notNull(), // YYYY-MM-DD
   initialEa: integer("initial_ea").notNull(),
@@ -44,7 +56,7 @@ export const planningGoals = pgTable("planning_goals", {
 });
 
 /**
- * Compromissos Pessoais, Bloqueios de Agenda e Hábitos Customizados no Calendário (§Fase 18)
+ * Compromissos Pessoais, Sessões Planejadas por Arquétipo e Bloqueios no Calendário (§Fase 1 / §Fase 18)
  * Quando `blocksWorkout = true`, o Selye protege automaticamente o dia como janela de absorção.
  */
 export const calendarCommitments = pgTable("calendar_commitments", {
@@ -55,6 +67,11 @@ export const calendarCommitments = pgTable("calendar_commitments", {
   goalId: uuid("goal_id").references(() => planningGoals.id, {
     onDelete: "set null",
   }),
+  templateId: uuid("template_id").references(() => workoutTemplates.id, {
+    onDelete: "set null",
+  }),
+  sessionArchetypeCode: text("session_archetype_code"),
+  activityClass: text("activity_class").default("serious").notNull(), // "serious" | "complementary" | "casual"
   localDate: date("local_date").notNull(), // YYYY-MM-DD
   kind: text("kind").default("personal_block").notNull(), // "personal_block" | "custom_habit" | "custom_workout" | "event_milestone"
   title: text("title").notNull(),

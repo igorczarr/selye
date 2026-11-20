@@ -3,12 +3,19 @@ import { users } from "./identity";
 import { coaches } from "./coaching";
 import { teams } from "./teams";
 import { exercises } from "./exercises";
+import { sports } from "./sports";
+import type { RoutineTrainingEffectSnapshot } from "../../core/modalities/backfill";
 
 export const trainingPrograms = pgTable("training_programs", {
   id: uuid("id").defaultRandom().primaryKey(),
   title: text("title").notNull(),
   description: text("description"),
+  sportId: uuid("sport_id").references(() => sports.id, { onDelete: "set null" }),
   modalityCode: text("modality_code").default("strength").notNull(),
+  /** Quando a ficha é fortalecimento complementar para outro esporte (ex.: musculação -> corrida) */
+  targetPrimaryModalityCode: text("target_primary_modality_code"),
+  /** Snapshot estruturado do efeito fisiológico entregue pela ficha (§Fase 1 / §Fase 4) */
+  trainingEffect: jsonb("training_effect").$type<RoutineTrainingEffectSnapshot>(),
   creatorUserId: uuid("creator_user_id").notNull().references(() => users.id),
   coachId: uuid("coach_id").references(() => coaches.id),
   teamId: uuid("team_id").references(() => teams.id),

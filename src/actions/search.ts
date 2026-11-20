@@ -4,10 +4,15 @@ import { connection } from "next/server";
 import { db } from "@/db";
 import * as schema from "@/db/schema";
 import { eq, and, desc } from "drizzle-orm";
-import { getOrCreateDemoUser, getDashboardData } from "./workout";
+import {
+  getOrCreateDemoUser,
+  getDashboardData,
+  resolveAthleteModalityProfileForUser,
+} from "./workout";
 import { sortRoutinesChronologically } from "@/lib/week";
 import { calculateWeeklyStreak } from "@/core/consistency/streak-calculator";
 import { getExerciseCategoryMeta } from "@/core/catalog/exercise-categories";
+import type { CoreModalityCode } from "@/core/modalities";
 
 export interface GlobalSearchSnapshot {
   userName: string;
@@ -16,6 +21,10 @@ export interface GlobalSearchSnapshot {
   eaReservePercent: number;
   availableReserveEa: number;
   personalCapacityEa: number;
+  athleteModalityProfile: {
+    primaryModality: CoreModalityCode;
+    complementaryModalities: CoreModalityCode[];
+  };
   activeSession: {
     id: string;
     title: string;
@@ -186,12 +195,26 @@ export async function getGlobalShellSnapshot(): Promise<GlobalSearchSnapshot> {
     let eaReservePercent = 82;
     let availableReserveEa = 1455;
     let personalCapacityEa = 1800;
+    let athleteModalityProfile: {
+      primaryModality: CoreModalityCode;
+      complementaryModalities: CoreModalityCode[];
+    } = {
+      primaryModality: "strength",
+      complementaryModalities: [],
+    };
     try {
-      const dash = await getDashboardData();
+      const [dash, modProfile] = await Promise.all([
+        getDashboardData(),
+        resolveAthleteModalityProfileForUser(user.id),
+      ]);
       const ap = dash.performanceSummary.adaptiveProfile;
       eaReservePercent = ap.reservePercent;
       availableReserveEa = ap.availableReserveEa;
       personalCapacityEa = ap.personalCapacityEa;
+      athleteModalityProfile = {
+        primaryModality: modProfile.primaryModality,
+        complementaryModalities: modProfile.complementaryModalities,
+      };
     } catch {
       // mantém valores padrão
     }
@@ -203,6 +226,7 @@ export async function getGlobalShellSnapshot(): Promise<GlobalSearchSnapshot> {
       eaReservePercent,
       availableReserveEa,
       personalCapacityEa,
+      athleteModalityProfile,
       activeSession: active
         ? {
             id: active.id,
@@ -236,6 +260,10 @@ export async function getGlobalShellSnapshot(): Promise<GlobalSearchSnapshot> {
       eaReservePercent: 80,
       availableReserveEa: 1455,
       personalCapacityEa: 1800,
+      athleteModalityProfile: {
+        primaryModality: "strength",
+        complementaryModalities: [],
+      },
       activeSession: null,
       routines: [],
       exercises: [],

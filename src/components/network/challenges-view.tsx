@@ -63,7 +63,7 @@ const SCORING_OPTIONS: {
   },
   {
     id: "adaptive_energy",
-    label: "Energia Adaptativa (EA)",
+    label: "Energia do Corpo (EA)",
     unit: "EA",
     desc: "Placar unificado Selye: soma esforço multimodal e também hábitos regenerativos (+EA)",
     icon: Zap,
@@ -169,7 +169,7 @@ export function ChallengesView({ initialChallenges }: ChallengesViewProps) {
   const getTypeText = (type: string) => {
     switch (type) {
       case "adaptive_energy":
-        return "Placar Energia Adaptativa (EA)";
+        return "Placar Energia do Corpo (EA)";
       case "minutes":
         return "Minutos em Movimento";
       case "active_days":
@@ -215,7 +215,7 @@ export function ChallengesView({ initialChallenges }: ChallengesViewProps) {
           </div>
           <h1 className="t-h1 mt-1">Desafios entre Amigos</h1>
           <p className="text-muted text-sm mt-1">
-            Compita com amigos em Dias Ativos, Minutos ou Energia Adaptativa (EA) — cada atleta na sua modalidade e respeitando a recuperação.
+            Compita com amigos em Dias Ativos, Minutos ou Energia do Corpo (EA) — cada pessoa na sua modalidade e respeitando o descanso.
           </p>
         </div>
 

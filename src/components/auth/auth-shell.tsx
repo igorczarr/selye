@@ -27,7 +27,7 @@ const PILLARS: { icon: LucideIcon; title: string; text: string }[] = [
   {
     icon: Activity,
     title: "Fisiologia de precisão",
-    text: "Monitoramento real de carga aguda:crônica (ACWR), volume e recordes pessoais.",
+    text: "Acompanhamento real do seu ritmo semanal, volume de treino e recordes pessoais.",
   },
   {
     icon: ShieldCheck,
@@ -122,7 +122,7 @@ export function AuthShell({
               </div>
               <div>
                 <span className="t-label !text-nevoa block">
-                  Índice Adaptativo (ACWR)
+                  Ritmo da Semana vs. Mês
                 </span>
                 <div className="flex items-baseline gap-2 mt-0.5">
                   <span className="t-data text-xl text-osso font-semibold">

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useMemo, useState, useTransition } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { archiveRoutine, duplicateRoutine } from "@/actions/routines";
@@ -17,6 +17,15 @@ import {
 import { ExerciseLink } from "@/components/catalog/exercise-link";
 import { ModalPortal } from "@/components/ui/modal-portal";
 import {
+  MODALITY_REGISTRY,
+  type CoreModalityCode,
+  type ExperienceLevel,
+} from "@/core/modalities";
+import {
+  analyzeRoutineEffect,
+  analyzeWeeklyRoutineGaps,
+} from "@/core/routines";
+import {
   PlusCircle,
   Play,
   Dumbbell,
@@ -31,6 +40,11 @@ import {
   MoreVertical,
   Pencil,
   Copy,
+  Sparkles,
+  AlertTriangle,
+  CheckCircle2,
+  Target,
+  Zap,
 } from "lucide-react";
 
 const MODALITY_LABELS: Record<string, string> = {
@@ -42,10 +56,12 @@ const MODALITY_LABELS: Record<string, string> = {
   footvolley: "Futevôlei",
   cycling: "Ciclismo",
   swimming: "Natação",
+  futsal: "Futsal",
+  football: "Futebol",
   pilates: "Pilates",
   mobility: "Mobilidade",
   cross_training: "Cross Training",
-  martial_arts: "Artes Marciais",
+  martial_arts: "Lutas",
 };
 
 interface RoutineHubItem {
@@ -69,7 +85,15 @@ interface RoutineHubItem {
   }[];
 }
 
-export function RoutinesHub({ routines }: { routines: RoutineHubItem[] }) {
+export function RoutinesHub({
+  routines,
+  athletePrimaryModality = "strength",
+  experienceLevel = "intermediate",
+}: {
+  routines: RoutineHubItem[];
+  athletePrimaryModality?: CoreModalityCode;
+  experienceLevel?: ExperienceLevel;
+}) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
   const [startingId, setStartingId] = useState<string | null>(null);
@@ -83,6 +107,56 @@ export function RoutinesHub({ routines }: { routines: RoutineHubItem[] }) {
   } | null>(null);
 
   const todayMondayIdx = jsDayToMondayIndex(new Date().getDay());
+
+  // Análise Ficha ↔ Objetivo & Radar de Lacunas Semanais (§Fase 4)
+  const weeklyCoverage = useMemo(
+    () =>
+      analyzeWeeklyRoutineGaps({
+        routines: routines.map((r) => ({
+          id: r.id,
+          title: r.title,
+          modalityCode: r.modalityCode,
+          dayOfWeek: r.templates?.[0]?.dayOfWeek ?? null,
+          prescriptions: (r.templates?.[0]?.prescriptions || []).map((p) => ({
+            exerciseNamePt: p.exerciseNamePt,
+            modalityCode: r.modalityCode,
+            targetSets: p.targetSets,
+            targetReps: p.targetReps,
+            restSeconds: p.restSeconds,
+          })),
+        })),
+        athletePrimaryModality,
+        experienceLevel,
+      }),
+    [routines, athletePrimaryModality, experienceLevel]
+  );
+
+  const effectByRoutineId = useMemo(() => {
+    const map = new Map<string, ReturnType<typeof analyzeRoutineEffect>>();
+    for (const r of routines) {
+      map.set(
+        r.id,
+        analyzeRoutineEffect({
+          routine: {
+            id: r.id,
+            title: r.title,
+            modalityCode: r.modalityCode,
+            dayOfWeek: r.templates?.[0]?.dayOfWeek ?? null,
+            prescriptions: (r.templates?.[0]?.prescriptions || []).map((p) => ({
+              exerciseNamePt: p.exerciseNamePt,
+              modalityCode: r.modalityCode,
+              targetSets: p.targetSets,
+              targetReps: p.targetReps,
+              restSeconds: p.restSeconds,
+            })),
+          },
+          athletePrimaryModality,
+          experienceLevel,
+        })
+      );
+    }
+    return map;
+  }, [routines, athletePrimaryModality, experienceLevel]);
 
   // Mapeia quais dias da semana (jsDay) possuem treino agendado
   const scheduledJsDays = new Set<number>();
@@ -131,10 +205,16 @@ export function RoutinesHub({ routines }: { routines: RoutineHubItem[] }) {
       {/* Cabeçalho */}
       <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4">
         <div>
-          <span className="t-label">Planejamento Semanal</span>
+          <span className="t-label">
+            Planejamento Semanal · {MODALITY_REGISTRY[athletePrimaryModality].shortNamePt}
+          </span>
           <h1 className="t-h1 mt-1">Rotinas de Treinamento</h1>
           <p className="text-muted text-sm mt-1">
-            Toque em qualquer exercício para abrir o passo a passo ilustrado e vídeo técnico.
+            Cada ficha traduz o que entrega para o seu objetivo em{" "}
+            <strong className="text-foreground">
+              {MODALITY_REGISTRY[athletePrimaryModality].shortNamePt}
+            </strong>
+            . Toque em qualquer exercício para ver passo a passo e vídeo.
           </p>
         </div>
 
@@ -181,6 +261,90 @@ export function RoutinesHub({ routines }: { routines: RoutineHubItem[] }) {
           </Link>
         </div>
       </div>
+
+      {/* Radar de Cobertura & Lacunas Semanais (§Fase 4) */}
+      <section className="card p-5 flex flex-col gap-3.5 border-profundo/30 bg-foreground/[0.015]">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div className="flex items-start gap-2.5">
+            <span className="w-8 h-8 rounded-lg bg-lima/20 text-accent-text flex items-center justify-center shrink-0 mt-0.5">
+              <Sparkles size={15} />
+            </span>
+            <div>
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="t-label !text-accent-text">
+                  Radar Ficha ↔ {weeklyCoverage.modalityShortNamePt}
+                </span>
+                <span className="px-2 py-0.5 rounded-full text-[10px] font-mono font-bold bg-lima text-grafite">
+                  {weeklyCoverage.coverageScorePercent}% cobertura
+                </span>
+              </div>
+              <h2 className="text-sm font-semibold text-foreground mt-0.5">
+                {weeklyCoverage.statusLabelPt}
+              </h2>
+            </div>
+          </div>
+
+          <div className="text-xs font-mono text-muted shrink-0">
+            <strong className="text-foreground">
+              {weeklyCoverage.totalWeeklyEffectiveSets}
+            </strong>{" "}
+            séries efetivas/sem ·{" "}
+            <strong className="text-foreground">
+              {weeklyCoverage.totalRoutinesAnalyzed}
+            </strong>{" "}
+            ficha(s)
+          </div>
+        </div>
+
+        {/* Pilares cobertos */}
+        {weeklyCoverage.coveredPillarsPt.length > 0 && (
+          <div className="flex flex-wrap gap-1.5">
+            {weeklyCoverage.coveredPillarsPt.map((pillar) => (
+              <span
+                key={pillar}
+                className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full border border-profundo/35 bg-lima/15 text-[11px] font-medium text-foreground"
+              >
+                <CheckCircle2 size={11} className="text-accent-text shrink-0" />
+                <span>{pillar}</span>
+              </span>
+            ))}
+          </div>
+        )}
+
+        {/* Lacunas detectadas */}
+        {weeklyCoverage.gaps.length > 0 && (
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-2.5 pt-1">
+            {weeklyCoverage.gaps.map((gap) => (
+              <div
+                key={gap.code}
+                className={`rounded-xl border p-3 flex items-start gap-2.5 ${
+                  gap.severity === "high"
+                    ? "border-amber-500/45 bg-amber-500/[0.07]"
+                    : "border-line bg-surface"
+                }`}
+              >
+                <AlertTriangle
+                  size={14}
+                  className={`shrink-0 mt-0.5 ${
+                    gap.severity === "high" ? "text-amber-500" : "text-muted"
+                  }`}
+                />
+                <div className="min-w-0">
+                  <span className="text-xs font-semibold text-foreground block leading-snug">
+                    {gap.titlePt}
+                  </span>
+                  <p className="text-[11px] text-muted mt-0.5 leading-relaxed">
+                    {gap.detailPt}
+                  </p>
+                  <p className="text-[11px] text-foreground/90 mt-1 font-medium">
+                    Sugestão: {gap.suggestionPt}
+                  </p>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </section>
 
       {/* Planner Semanal em ordem estrita Segunda → Domingo */}
       <section
@@ -296,6 +460,7 @@ export function RoutinesHub({ routines }: { routines: RoutineHubItem[] }) {
                 jsDayToMondayIndex(dayOfWeek) === todayMondayIdx;
               const estMin = estimateRoutineDurationMinutes(prescriptions);
               const totalSets = countTotalSets(prescriptions);
+              const effect = effectByRoutineId.get(routine.id);
               const isExpanded = Boolean(expandedIds[routine.id]);
               const displayedPrescriptions = isExpanded
                 ? prescriptions
@@ -405,7 +570,39 @@ export function RoutinesHub({ routines }: { routines: RoutineHubItem[] }) {
                         <Layers size={12} className="text-accent-text" />
                         {prescriptions.length} mov. · {totalSets} séries
                       </span>
+                      {effect && effect.snapshot.estimatedLoadUa > 0 && (
+                        <span className="inline-flex items-center gap-1 text-foreground">
+                          <Zap size={11} className="text-accent-text" />~
+                          {effect.snapshot.estimatedLoadUa} EA
+                        </span>
+                      )}
                     </div>
+
+                    {/* O que esta ficha entrega (§Fase 4) */}
+                    {effect && effect.snapshot.estimatedTotalSets > 0 && (
+                      <div
+                        className={`mt-3 rounded-xl border p-2.5 flex flex-col gap-1 ${
+                          effect.alignmentTier === "high"
+                            ? "border-profundo/35 bg-lima/10"
+                            : effect.alignmentTier === "caution_overload"
+                              ? "border-amber-500/40 bg-amber-500/10"
+                              : "border-line bg-foreground/[0.02]"
+                        }`}
+                      >
+                        <div className="flex items-center justify-between gap-1.5">
+                          <span className="text-[10px] font-mono font-semibold uppercase tracking-wider text-accent-text inline-flex items-center gap-1">
+                            <Target size={10} />
+                            <span>{effect.alignmentBadgePt}</span>
+                          </span>
+                        </div>
+                        <p className="text-[11px] font-medium text-foreground leading-snug">
+                          {effect.primaryCapacityLabelPt}
+                        </p>
+                        <p className="text-[10px] text-muted leading-snug line-clamp-2">
+                          {effect.alignmentExplanationPt}
+                        </p>
+                      </div>
+                    )}
 
                     {/* Prévia clicável de exercícios (abre ExerciseSheet com passo a passo e vídeo) */}
                     <div className="mt-3.5 space-y-1.5 border-t border-line pt-3">

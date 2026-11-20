@@ -1,4 +1,5 @@
 import { pgTable, uuid, text, timestamp, boolean, doublePrecision, jsonb } from "drizzle-orm/pg-core";
+import type { EaOnboardingCalibrationResult } from "../../core/ml/ea-onboarding-calibrator";
 
 export const users = pgTable("users", {
   id: uuid("id").defaultRandom().primaryKey(),
@@ -15,8 +16,11 @@ export const profiles = pgTable("profiles", {
   id: uuid("id").defaultRandom().primaryKey(),
   userId: uuid("user_id").notNull().references(() => users.id, { onDelete: "cascade" }).unique(),
   timezone: text("timezone").default("America/Sao_Paulo").notNull(),
-  experienceLevel: text("experience_level").default("beginner"), // beginner, intermediate, advanced
+  experienceLevel: text("experience_level").default("beginner"), // beginner, intermediate, advanced, competitive
   goals: jsonb("goals").$type<string[]>().default([]),
+  /** Snapshot da calibração científica de EA e perfil fisiológico do onboarding (§Fase 2) */
+  eaCalibration: jsonb("ea_calibration").$type<EaOnboardingCalibrationResult | null>(),
+  onboardingCompletedAt: timestamp("onboarding_completed_at", { withTimezone: true }),
   isPrivate: boolean("is_private").default(false).notNull(),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),

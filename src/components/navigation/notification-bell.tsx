@@ -30,6 +30,7 @@ import {
 } from "@/actions/notifications";
 import type { RescheduleProposal } from "@/core/performance/weekly-rescheduler";
 import type { ProactivePlanAlert } from "@/core/planning/daily-plan-coach";
+import type { CoachAlert } from "@/core/notifications/coach-alerts";
 import Link from "next/link";
 
 function formatRelativeTimePt(isoStr: string): string {
@@ -64,6 +65,8 @@ export function NotificationBell({
   const [storedList, setStoredList] = useState<StoredNotificationRecord[]>([]);
   const [morningCheckinPending, setMorningCheckinPending] = useState(false);
   const [planAlert, setPlanAlert] = useState<ProactivePlanAlert | null>(null);
+  const [coachAlerts, setCoachAlerts] = useState<CoachAlert[]>([]);
+  const [visibleCount, setVisibleCount] = useState(5);
   const [dismissedIds, setDismissedIds] = useState<Record<string, boolean>>({});
   const [appliedStatus, setAppliedStatus] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<"all" | "unread">("all");
@@ -76,6 +79,7 @@ export function NotificationBell({
         setStoredList(feed.notifications);
         setMorningCheckinPending(feed.morningCheckinPending);
         setPlanAlert(feed.planAlert || null);
+        setCoachAlerts(feed.coachAlerts || []);
       })
       .catch(() => {});
   };
@@ -119,12 +123,64 @@ export function NotificationBell({
 
   const activePlanAlert =
     planAlert && !dismissedIds[planAlert.id] ? planAlert : null;
+  const activeCoachAlerts = coachAlerts.filter((a) => !dismissedIds[a.id]);
+  const urgentCoachAlerts = activeCoachAlerts.filter((a) => a.priority === "now");
+  const planCoachAlerts = activeCoachAlerts.filter((a) => a.priority === "plan");
+  const infoCoachAlerts = activeCoachAlerts.filter((a) => a.priority === "info");
 
   const badgeCount =
     activeProposals.length +
     unreadStored.length +
     (morningCheckinPending && !dismissedIds["morning_checkin_prompt"] ? 1 : 0) +
-    (activePlanAlert ? 1 : 0);
+    (activePlanAlert ? 1 : 0) +
+    urgentCoachAlerts.length +
+    planCoachAlerts.length;
+
+  const renderCoachAlert = (a: CoachAlert) => (
+    <div
+      key={a.id}
+      className={`rounded-xl border p-3 flex flex-col gap-1.5 ${
+        a.priority === "now"
+          ? "border-[#e0b354]/60 bg-[#e0b354]/10"
+          : a.priority === "plan"
+            ? "border-lima/40 bg-foreground/[0.03]"
+            : "border-line bg-foreground/[0.02]"
+      }`}
+    >
+      <div className="flex items-start justify-between gap-2">
+        <span className="text-[10px] font-mono font-semibold uppercase tracking-wider text-accent-text">
+          {a.badgePt}
+        </span>
+        <button
+          type="button"
+          onClick={() => handleDismiss(a.id)}
+          title="Ocultar aviso"
+          className="text-muted hover:text-foreground p-0.5 cursor-pointer"
+        >
+          <X size={12} />
+        </button>
+      </div>
+      <h4 className="text-xs font-semibold text-foreground leading-snug">
+        {a.titlePt}
+      </h4>
+      <p className="text-[11px] text-muted leading-relaxed">{a.bodyPt}</p>
+      <div className="pt-1 flex justify-end">
+        <Link
+          href={a.ctaHref}
+          onClick={() => setOpen(false)}
+          className="btn btn-primary h-7 px-3 text-[11px] font-mono font-semibold"
+        >
+          {a.ctaLabelPt}
+        </Link>
+      </div>
+    </div>
+  );
+
+  const sectionTitle = (text: string) => (
+    <span className="text-[10px] font-mono uppercase tracking-wider text-muted px-0.5 pt-1">
+      {text}
+    </span>
+  );
 
   const handleApplyProposal = (prop: RescheduleProposal) => {
     startTransition(async () => {
@@ -217,7 +273,7 @@ export function NotificationBell({
   };
 
   return (
-    <div ref={containerRef} className="relative">
+    <div ref={containerRef} className="sm:relative">
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}
@@ -236,7 +292,7 @@ export function NotificationBell({
       </button>
 
       {open && (
-        <div className="absolute right-0 top-11 w-[350px] sm:w-[410px] bg-surface border border-line rounded-2xl shadow-2xl p-4 flex flex-col gap-3 z-50 animate-in fade-in-0 zoom-in-95 duration-150">
+        <div className="fixed inset-x-2 top-16 max-h-[calc(100dvh-5rem)] overflow-hidden sm:absolute sm:inset-x-auto sm:right-0 sm:top-11 sm:w-[410px] bg-surface border border-line rounded-2xl shadow-2xl p-3 sm:p-4 flex flex-col gap-3 z-50 animate-in fade-in-0 zoom-in-95 duration-150">
           {/* Cabeçalho */}
           <div className="flex items-center justify-between border-b border-line pb-2.5">
             <div className="flex items-center gap-2">
@@ -320,7 +376,11 @@ export function NotificationBell({
           )}
 
           {/* Lista de Avisos */}
-          <div className="flex flex-col gap-2.5 max-h-[58vh] overflow-y-auto pr-1">
+          <div className="flex flex-col gap-2.5 flex-1 min-h-0 overflow-y-auto overscroll-contain pr-1">
+            {/* 0. Avisos do Treinador: urgentes primeiro, citando sua modalidade e meta */}
+            {urgentCoachAlerts.length > 0 && sectionTitle("Para agora")}
+            {urgentCoachAlerts.map(renderCoachAlert)}
+
             {/* 1. Lembrete Suave do Check-in Matinal (se ainda não fez hoje) */}
             {morningCheckinPending &&
               !dismissedIds["morning_checkin_prompt"] && (
@@ -463,8 +523,14 @@ export function NotificationBell({
               );
             })}
 
-            {/* 3. Histórico de Notificações do Usuário (Treinos, Conquistas, Comunidade, E-mails) */}
-            {visibleStored.map((item) => (
+            {/* 3. Histórico de Notificações do Usuário */}
+            {(planCoachAlerts.length > 0 || infoCoachAlerts.length > 0) &&
+              sectionTitle("Sua meta e seu plano")}
+            {planCoachAlerts.map(renderCoachAlert)}
+            {infoCoachAlerts.map(renderCoachAlert)}
+
+            {visibleStored.length > 0 && sectionTitle("Histórico")}
+            {visibleStored.slice(0, visibleCount).map((item) => (
               <div
                 key={item.id}
                 onClick={() => handleMarkRead(item.id, item.actionUrl)}
@@ -506,8 +572,19 @@ export function NotificationBell({
               </div>
             ))}
 
+            {visibleStored.length > visibleCount && (
+              <button
+                type="button"
+                onClick={() => setVisibleCount((c) => c + 5)}
+                className="h-8 rounded-lg border border-line text-[11px] font-mono text-muted hover:text-foreground hover:bg-foreground/5 cursor-pointer"
+              >
+                Ver mais ({visibleStored.length - visibleCount})
+              </button>
+            )}
+
             {activeProposals.length === 0 &&
               visibleStored.length === 0 &&
+              activeCoachAlerts.length === 0 &&
               !morningCheckinPending && (
                 <div className="py-6 px-3 text-center flex flex-col items-center gap-2">
                   <div className="w-9 h-9 rounded-full bg-foreground/5 flex items-center justify-center text-muted">

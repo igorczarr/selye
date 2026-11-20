@@ -36,11 +36,23 @@ import {
   type LoggedRecoveryAttitude,
   type RecoveryAttitudeCode,
 } from "@/core/ml/adaptive-athlete-engine";
+import {
+  evaluateModalityKpiDashboard,
+  type KpiSetLogSample,
+  type ModalityKpiDashboardResult,
+} from "@/core/kpi";
+import {
+  resolveCoreModalityCode,
+  type CoreModalityCode,
+  type ExperienceLevel,
+} from "@/core/modalities";
 
 export interface EvolutionData {
   acwrResult: ACWRResult;
   recoveryBudget: RecoveryBudgetResult;
   adaptiveProfile: AdaptiveAthleteMLProfile;
+  modalityKpiDashboard: ModalityKpiDashboardResult;
+  onboardingCompleted: boolean;
   dailyDecision: DailyDecisionResult;
   todayCheckin: MorningCheckinInput | null;
   isCurrentWeekShielded: boolean;
@@ -117,6 +129,9 @@ export async function getEvolutionData(): Promise<EvolutionData> {
     activityRows,
     recentBodyMetrics,
     userProfileRows,
+    userSportRows,
+    kpiMeasurementRows,
+    activePlanningGoalRows,
   ] = await Promise.all([
     db
       .select()
@@ -133,6 +148,7 @@ export async function getEvolutionData(): Promise<EvolutionData> {
       .select()
       .from(schema.weeklyGoals)
       .where(eq(schema.weeklyGoals.userId, user.id))
+      .orderBy(desc(schema.weeklyGoals.createdAt))
       .limit(1),
     db
       .select()
@@ -149,6 +165,30 @@ export async function getEvolutionData(): Promise<EvolutionData> {
       .from(schema.profiles)
       .where(eq(schema.profiles.userId, user.id))
       .limit(1),
+    db
+      .select({
+        role: schema.userSports.role,
+        isPriority: schema.userSports.isPriority,
+        experienceLevel: schema.userSports.experienceLevel,
+        targetKpiKey: schema.userSports.targetKpiKey,
+        targetKpiValue: schema.userSports.targetKpiValue,
+        code: schema.sports.code,
+      })
+      .from(schema.userSports)
+      .innerJoin(schema.sports, eq(schema.userSports.sportId, schema.sports.id))
+      .where(eq(schema.userSports.userId, user.id)),
+    db
+      .select()
+      .from(schema.athleteKpiMeasurements)
+      .where(eq(schema.athleteKpiMeasurements.userId, user.id))
+      .orderBy(desc(schema.athleteKpiMeasurements.measuredAt))
+      .limit(80),
+    db
+      .select()
+      .from(schema.planningGoals)
+      .where(eq(schema.planningGoals.userId, user.id))
+      .orderBy(desc(schema.planningGoals.createdAt))
+      .limit(5),
   ]);
 
   const completedWorkouts = workouts.filter((w) => w.status === "completed");
@@ -279,6 +319,7 @@ export async function getEvolutionData(): Promise<EvolutionData> {
     targetDaysPerWeek,
     currentWeeklyStreak: streakRows[0]?.currentWeeklyStreak || 0,
     restingHrBpm,
+    eaCalibration: userProfileRows[0]?.eaCalibration ?? null,
     sessionsLast28Days: sessionLoadInputs.map((s) => ({
       date: s.date,
       modalityCode: s.modality || "strength",
@@ -358,6 +399,9 @@ export async function getEvolutionData(): Promise<EvolutionData> {
   const last28IdsSet = new Set(last28Completed.map((w) => w.id));
   let totalVolumeKg = 0;
   let monthlyVolumeKg = 0;
+  const kpiSetLogs: KpiSetLogSample[] = [];
+  const distanceMetersBySessionId = new Map<string, number>();
+  const volumeKgBySessionId = new Map<string, number>();
   const prMap = new Map<
     string,
     {
@@ -382,12 +426,14 @@ export async function getEvolutionData(): Promise<EvolutionData> {
       db.select().from(schema.exercises),
     ]);
 
+    const exerciseById = new Map(exercisesCatalog.map((e) => [e.id, e]));
     const exerciseNameById = new Map(
       exercisesCatalog.map((e) => [e.id, e.namePt || e.nameEn || "Exercício"])
     );
     const exerciseIdBySessExId = new Map(
       sessExercises.map((se) => [se.id, se.exerciseId])
     );
+    const sessionById = new Map(workouts.map((w) => [w.id, w]));
     const sessionDateById = new Map(
       workouts.map((w) => [
         w.id,
@@ -403,8 +449,39 @@ export async function getEvolutionData(): Promise<EvolutionData> {
       if (last28IdsSet.has(log.sessionId)) {
         monthlyVolumeKg += vol;
       }
+      if (vol > 0) {
+        volumeKgBySessionId.set(
+          log.sessionId,
+          (volumeKgBySessionId.get(log.sessionId) || 0) + vol
+        );
+      }
+      if (log.distanceMeters && log.distanceMeters > 0) {
+        distanceMetersBySessionId.set(
+          log.sessionId,
+          (distanceMetersBySessionId.get(log.sessionId) || 0) + log.distanceMeters
+        );
+      }
 
       const exId = exerciseIdBySessExId.get(log.sessionExerciseId);
+      const sess = sessionById.get(log.sessionId);
+      if (exId && sess && sess.status === "completed") {
+        const exRow = exerciseById.get(exId);
+        kpiSetLogs.push({
+          sessionId: log.sessionId,
+          date: new Date(sess.startedAt).toISOString().split("T")[0],
+          modalityCode: sess.modalityCode,
+          activityClass: sess.activityClass,
+          exerciseNamePt: exRow?.namePt || "Exercício",
+          exerciseNameEn: exRow?.nameEn || null,
+          secondaryMuscles: exRow?.secondaryMuscles || null,
+          setType: log.setType,
+          weightKg: log.weightKg,
+          reps: log.reps,
+          rpe: log.rpe,
+          rir: log.rir,
+        });
+      }
+
       if (exId && weight > 0) {
         const exName = exerciseNameById.get(exId) || "Exercício";
         const currentPr = prMap.get(exId);
@@ -478,10 +555,121 @@ export async function getEvolutionData(): Promise<EvolutionData> {
     });
   }
 
+  // 5. Motor de KPIs por Modalidade & Indicador "Nos Trilhos?" (§Fase 3)
+  const primarySportRow =
+    userSportRows.find((s) => s.role === "primary") ||
+    userSportRows.find((s) => s.isPriority) ||
+    userSportRows[0];
+
+  const primaryModality: CoreModalityCode =
+    userProfileRows[0]?.eaCalibration?.inputs?.primaryModality ||
+    resolveCoreModalityCode(primarySportRow?.code) ||
+    "strength";
+
+  const complementaryModalities: CoreModalityCode[] = Array.from(
+    new Set(
+      (
+        userProfileRows[0]?.eaCalibration?.inputs?.complementaryModalities ||
+        userSportRows
+          .filter((s) => s.role === "complementary")
+          .map((s) => resolveCoreModalityCode(s.code))
+          .filter((c): c is CoreModalityCode => c !== null)
+      ).filter((c) => c !== primaryModality)
+    )
+  );
+
+  const validLevels: ExperienceLevel[] = [
+    "beginner",
+    "intermediate",
+    "advanced",
+    "competitive",
+  ];
+  const rawExp = (userProfileRows[0]?.experienceLevel ||
+    primarySportRow?.experienceLevel ||
+    "intermediate") as ExperienceLevel;
+  const experienceLevel: ExperienceLevel = validLevels.includes(rawExp)
+    ? rawExp
+    : "intermediate";
+
+  const latestWeightMetric = recentBodyMetrics.find(
+    (m) => m.metricType === "weight"
+  );
+  const activePlanningGoal = activePlanningGoalRows.find(
+    (g) => g.status === "active"
+  );
+
+  const past42Days = new Date(now);
+  past42Days.setDate(now.getDate() - 42);
+  const last42Completed = completedWorkouts.filter(
+    (w) => new Date(w.startedAt) >= past42Days
+  );
+
+  const modalityKpiDashboard = evaluateModalityKpiDashboard({
+    primaryModality,
+    complementaryModalities,
+    experienceLevel,
+    bodyWeightKg: latestWeightMetric?.valueNumeric ?? null,
+    sessionsLast42Days: last42Completed.map((w) => {
+      const durationMinutes = w.finishedAt
+        ? Math.max(
+            15,
+            Math.round(
+              (new Date(w.finishedAt).getTime() -
+                new Date(w.startedAt).getTime()) /
+                60000
+            )
+          )
+        : 45;
+      const distM = distanceMetersBySessionId.get(w.id) || 0;
+      return {
+        id: w.id,
+        date: new Date(w.startedAt).toISOString().split("T")[0],
+        modalityCode: w.modalityCode,
+        activityClass: w.activityClass,
+        durationMinutes,
+        rpe: w.rpeSession || 7,
+        distanceMeters: distM > 0 ? distM : null,
+        distanceKm: distM > 0 ? Math.round((distM / 1000) * 100) / 100 : null,
+        volumeKg: volumeKgBySessionId.get(w.id) || null,
+      };
+    }),
+    setLogsLast14Days: kpiSetLogs,
+    measurements: kpiMeasurementRows.map((m) => ({
+      kpiKey: m.kpiKey,
+      modalityCode: m.modalityCode,
+      valueNumeric: m.valueNumeric,
+      unit: m.unit,
+      measuredAt: new Date(m.measuredAt).toISOString(),
+      source: m.source,
+    })),
+    goalTarget:
+      activePlanningGoal?.primaryKpiKey || primarySportRow?.targetKpiKey
+        ? {
+            primaryKpiKey:
+              activePlanningGoal?.primaryKpiKey ||
+              primarySportRow?.targetKpiKey ||
+              "",
+            baselineValue: activePlanningGoal?.baselineKpiValue ?? null,
+            targetValue:
+              activePlanningGoal?.targetKpiValue ??
+              primarySportRow?.targetKpiValue ??
+              null,
+            startDate: activePlanningGoal?.startDate ?? null,
+            targetDate: activePlanningGoal?.targetDate ?? null,
+            eventTitle: activePlanningGoal?.eventTitle ?? null,
+          }
+        : null,
+    weeklyMonotony: acwrResult.monotony,
+    acwr: acwrResult.acwr,
+    todayDateStr: todayStr,
+  });
+
   return {
     acwrResult,
     recoveryBudget,
     adaptiveProfile,
+    modalityKpiDashboard,
+    onboardingCompleted: Boolean(userProfileRows[0]?.onboardingCompletedAt),
     dailyDecision,
     todayCheckin,
     isCurrentWeekShielded,

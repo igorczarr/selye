@@ -5,7 +5,10 @@ import Link from "next/link";
 import { ArrowLeft } from "lucide-react";
 import { Navbar } from "@/components/navigation/navbar";
 import { RoutineBuilder } from "@/components/routines/routine-builder";
-import { getRoutineForEdit } from "@/actions/routines";
+import {
+  getAthleteModalityContextForRoutines,
+  getRoutineForEdit,
+} from "@/actions/routines";
 import { db } from "@/db";
 import * as schema from "@/db/schema";
 
@@ -19,7 +22,7 @@ async function EditRoutineLoader({
   await connection();
   const { id } = await params;
 
-  const [routine, catalogExercises] = await Promise.all([
+  const [routine, catalogExercises, athleteCtx] = await Promise.all([
     getRoutineForEdit(id),
     db
       .select({
@@ -32,6 +35,7 @@ async function EditRoutineLoader({
       .from(schema.exercises)
       .orderBy(schema.exercises.namePt)
       .limit(250),
+    getAthleteModalityContextForRoutines(),
   ]);
 
   if (!routine) {
@@ -42,6 +46,8 @@ async function EditRoutineLoader({
     <RoutineBuilder
       availableExercises={catalogExercises}
       initialRoutine={routine}
+      athletePrimaryModality={athleteCtx.primaryModality}
+      experienceLevel={athleteCtx.experienceLevel}
     />
   );
 }

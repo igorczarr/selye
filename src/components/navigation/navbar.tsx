@@ -240,16 +240,16 @@ export function Navbar() {
           </div>
 
           {/* Centro: Barra de Pesquisa global (abre Command Palette ⌘K) */}
-          <div className="flex-1 max-w-md xl:max-w-xl min-w-0">
+          <div className="flex-1 max-w-md xl:max-w-xl min-w-0 max-sm:flex max-sm:justify-end">
             <button
               type="button"
               onClick={() => setPaletteOpen(true)}
               aria-label="Buscar exercícios, fichas, atletas ou comandos (Ctrl+K)"
-              className="w-full h-9 px-3 rounded-lg border border-line bg-background/60 hover:bg-foreground/[0.04] hover:border-mineral/60 text-muted flex items-center justify-between gap-2 text-xs transition-colors cursor-pointer"
+              className="max-sm:w-9 max-sm:px-0 max-sm:justify-center w-full h-9 px-3 rounded-lg border border-line bg-background/60 hover:bg-foreground/[0.04] hover:border-mineral/60 text-muted flex items-center justify-between gap-2 text-xs transition-colors cursor-pointer"
             >
               <span className="flex items-center gap-2 min-w-0">
                 <Search size={14} className="text-muted shrink-0" />
-                <span className="truncate">
+                <span className="truncate max-sm:hidden">
                   <span className="sm:hidden">Buscar...</span>
                   <span className="hidden sm:inline">
                     Buscar exercícios, fichas, atletas...
@@ -264,13 +264,18 @@ export function Navbar() {
 
           {/* Direita: Registrar Atividade + Nova Ficha + Notificações (Sininho) + Streak + Perfil */}
           <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
-            {/* Registrar Atividade ao lado de Nova Ficha */}
-            <QuickActivityLauncher variant="secondary" compact={true} />
+            {/* Registrar Atividade ao lado de Nova Ficha (montado no mobile para o botão + da Bottom Pill) */}
+            <QuickActivityLauncher
+              variant="secondary"
+              compact={true}
+              hideTriggerOnMobile={true}
+              athleteProfile={snapshot?.athleteModalityProfile}
+            />
 
             <Link
               href="/treinos/novo"
               aria-label="Criar nova ficha de treino"
-              className="h-9 px-2.5 sm:px-3 rounded-lg bg-lima text-grafite text-xs font-mono font-bold hover:brightness-95 transition-all inline-flex items-center gap-1.5 shrink-0"
+              className="hidden sm:inline-flex h-9 px-2.5 sm:px-3 rounded-lg bg-lima text-grafite text-xs font-mono font-bold hover:brightness-95 transition-all inline-flex items-center gap-1.5 shrink-0"
             >
               <PlusCircle size={15} strokeWidth={2} />
               <span className="hidden sm:inline">Nova Ficha</span>
@@ -286,7 +291,7 @@ export function Navbar() {
                 (snapshot?.currentWeeklyStreak ?? 0) === 1 ? "semana" : "semanas"
               } · ${snapshot?.activeDaysInYear ?? 0} dias ativos no ano`}
               aria-label={`Sequência semanal: ${snapshot?.currentWeeklyStreak ?? 0}`}
-              className={`h-9 px-2.5 rounded-lg border text-xs font-mono font-semibold inline-flex items-center gap-1.5 transition-colors shrink-0 ${
+              className={`hidden sm:inline-flex h-9 px-2.5 rounded-lg border text-xs font-mono font-semibold items-center gap-1.5 transition-colors shrink-0 ${
                 (snapshot?.currentWeeklyStreak ?? 0) > 0
                   ? "border-lima/70 bg-lima/15 text-foreground hover:bg-lima/25"
                   : "border-line bg-surface text-muted hover:text-foreground hover:bg-foreground/5"

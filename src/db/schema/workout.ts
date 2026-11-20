@@ -2,6 +2,7 @@ import { pgTable, uuid, text, timestamp, boolean, integer, doublePrecision } fro
 import { users } from "./identity";
 import { teams } from "./teams";
 import { exercises } from "./exercises";
+import { sports } from "./sports";
 import { programVersions, workoutTemplates } from "./training";
 
 export const workoutSessions = pgTable("workout_sessions", {
@@ -10,8 +11,12 @@ export const workoutSessions = pgTable("workout_sessions", {
   teamId: uuid("team_id").references(() => teams.id),
   programVersionId: uuid("program_version_id").references(() => programVersions.id),
   templateId: uuid("template_id").references(() => workoutTemplates.id),
+  sportId: uuid("sport_id").references(() => sports.id, { onDelete: "set null" }),
   title: text("title").notNull(),
   modalityCode: text("modality_code").default("strength").notNull(),
+  /** Classificação da atividade: 'serious' (modalidade principal) | 'complementary' (suporte) | 'casual' (cardio/atividade solta) */
+  activityClass: text("activity_class").default("serious").notNull(),
+  sessionArchetypeCode: text("session_archetype_code"),
   status: text("status").default("in_progress").notNull(), // in_progress, paused, completed, discarded
   startedAt: timestamp("started_at", { withTimezone: true }).defaultNow().notNull(),
   pausedAt: timestamp("paused_at", { withTimezone: true }),

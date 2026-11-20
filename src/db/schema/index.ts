@@ -11,3 +11,4 @@ export * from "./content";
 export * from "./notifications";
 export * from "./integrations";
 export * from "./planning";
+export * from "./kpi";

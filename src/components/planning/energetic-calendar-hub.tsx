@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useMemo, useTransition } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
   savePlanningGoal,
@@ -19,6 +20,11 @@ import {
 import type { EnrichedCalendarDay } from "@/core/planning/plan-progress";
 import { WEEKDAYS_MONDAY_FIRST, jsDayToMondayIndex } from "@/lib/week";
 import { ModalPortal } from "@/components/ui/modal-portal";
+import {
+  CORE_MODALITY_CODES,
+  MODALITY_REGISTRY,
+  type CoreModalityCode,
+} from "@/core/modalities";
 import {
   CalendarDays,
   Trophy,
@@ -83,7 +89,7 @@ const PHASE_STYLES: Record<
     badgeClass: "bg-emerald-400 text-grafite",
     cellBorderClass: "border-emerald-400/55 bg-emerald-500/[0.09]",
     strokeColor: "#34D399",
-    hintPt: "Polimento & Pico · Energia máxima e frescor",
+    hintPt: "Semana Leve pré-prova · Corpo descansado no dia D",
   },
 };
 
@@ -133,10 +139,19 @@ export function EnergeticCalendarHub({
     activeGoal?.mode || "competition"
   );
   const [goalTitle, setGoalTitle] = useState(
-    activeGoal?.eventTitle || "Open de Vôlei de Praia"
+    activeGoal?.eventTitle ||
+      `Ciclo de Performance · ${MODALITY_REGISTRY[snapshot.athletePrimaryModality].shortNamePt}`
   );
-  const [goalModality, setGoalModality] = useState(
-    activeGoal?.modalityLabel || "Vôlei de Praia & Força"
+  const [goalModalityCode, setGoalModalityCode] = useState<CoreModalityCode>(
+    activeGoal?.modalityCode || snapshot.athletePrimaryModality
+  );
+  const [goalIncludeStrength, setGoalIncludeStrength] = useState<boolean>(
+    activeGoal
+      ? activeGoal.complementaryModalityCode === "strength"
+      : snapshot.athleteComplementaryModality === "strength"
+  );
+  const [goalTargetKpiValueStr, setGoalTargetKpiValueStr] = useState<string>(
+    activeGoal?.targetKpiValue != null ? String(activeGoal.targetKpiValue) : ""
   );
   const [goalTargetDate, setGoalTargetDate] = useState(
     activeGoal?.targetDate || addDaysStr(snapshot.todayDateStr, 28)
@@ -172,11 +187,30 @@ export function EnergeticCalendarHub({
     [snapshot.commitments]
   );
 
+  const selectedGoalModSpec = MODALITY_REGISTRY[goalModalityCode];
+  const selectedGoalPrimaryKpi =
+    selectedGoalModSpec.kpis.find((k) => k.isPrimaryGoalMetric) ||
+    selectedGoalModSpec.kpis[0];
+
   const liveSimulation = useMemo(() => {
+    const parsedKpiVal = Number(goalTargetKpiValueStr.replace(",", "."));
     return planEnergeticGrowthCurve({
       mode: goalMode,
-      eventTitle: goalTitle || "Meu Objetivo",
-      modalityLabelPt: goalModality || "Multimodal & Força",
+      eventTitle: goalTitle || `Ciclo · ${selectedGoalModSpec.shortNamePt}`,
+      modalityCode: goalModalityCode,
+      modalityLabelPt: selectedGoalModSpec.shortNamePt,
+      complementaryModalityCode:
+        goalModalityCode !== "strength" && goalIncludeStrength
+          ? "strength"
+          : null,
+      experienceLevel: snapshot.athleteExperienceLevel,
+      primaryKpiKey: selectedGoalPrimaryKpi.key,
+      targetKpiValue:
+        goalTargetKpiValueStr.trim() !== "" && !Number.isNaN(parsedKpiVal)
+          ? parsedKpiVal
+          : null,
+      kpiUnit: selectedGoalPrimaryKpi.unit,
+      userRoutines: snapshot.linkedRoutines,
       currentEa: snapshot.realCurrentEa,
       targetEa: goalTargetEa,
       startDateStr: snapshot.todayDateStr,
@@ -191,7 +225,13 @@ export function EnergeticCalendarHub({
   }, [
     goalMode,
     goalTitle,
-    goalModality,
+    goalModalityCode,
+    goalIncludeStrength,
+    goalTargetKpiValueStr,
+    selectedGoalModSpec,
+    selectedGoalPrimaryKpi,
+    snapshot.athleteExperienceLevel,
+    snapshot.linkedRoutines,
     snapshot.realCurrentEa,
     goalTargetEa,
     snapshot.todayDateStr,
@@ -299,11 +339,24 @@ export function EnergeticCalendarHub({
 
   const handleSaveGoal = (e: React.FormEvent) => {
     e.preventDefault();
+    const parsedKpiVal = Number(goalTargetKpiValueStr.replace(",", "."));
     startTransition(async () => {
       await savePlanningGoal({
         mode: goalMode,
-        eventTitle: goalTitle.trim() || "Ciclo de Evolução Selye",
-        modalityLabel: goalModality.trim() || "Multimodal & Força",
+        eventTitle:
+          goalTitle.trim() || `Ciclo · ${selectedGoalModSpec.shortNamePt}`,
+        modalityCode: goalModalityCode,
+        modalityLabel: selectedGoalModSpec.shortNamePt,
+        complementaryModalityCode:
+          goalModalityCode !== "strength" && goalIncludeStrength
+            ? "strength"
+            : null,
+        primaryKpiKey: selectedGoalPrimaryKpi.key,
+        targetKpiValue:
+          goalTargetKpiValueStr.trim() !== "" && !Number.isNaN(parsedKpiVal)
+            ? parsedKpiVal
+            : null,
+        kpiUnit: selectedGoalPrimaryKpi.unit,
         targetDate: goalTargetDate,
         targetEa: goalTargetEa,
         initialEa: snapshot.realCurrentEa,
@@ -313,7 +366,7 @@ export function EnergeticCalendarHub({
       });
       setGoalModalOpen(false);
       setStatusBanner(
-        `Plano "${goalTitle.trim()}" ativado! Enviamos sua receita de evolução para o Sininho e seu e-mail.`
+        `Plano de ${selectedGoalModSpec.shortNamePt} ativado no calendário e sincronizado com suas fichas!`
       );
       router.refresh();
     });
@@ -406,7 +459,7 @@ export function EnergeticCalendarHub({
           </span>
           <h1 className="t-h1 mt-1">Calendário do Seu Corpo</h1>
           <p className="text-sm text-muted mt-1 max-w-2xl">
-            Entenda seus dias de maior e menor energia, organize seus compromissos e construa com previsibilidade a curva de <strong>Energia Adaptativa (EA)</strong> até sua próxima competição ou meta pessoal.
+            Entenda seus dias de maior e menor energia, organize seus compromissos e acompanhe com clareza a curva de <strong>Energia do Corpo (EA)</strong> até sua próxima prova ou meta pessoal.
           </p>
         </div>
 
@@ -731,17 +784,19 @@ export function EnergeticCalendarHub({
         </section>
       </div>
 
-      {/* ================= SEÇÃO 2: RECEITA LITERAL ("PARA ATINGIR X EM Y, FAÇA X, Y, Z") ================= */}
+      {/* ================= SEÇÃO 2: ARQUITETURA SEMANAL INTEGRADA POR MODALIDADE (SEM X/Y/Z) ================= */}
       <section className="card p-5 sm:p-6 flex flex-col gap-4 border-l-4 border-l-lima">
         <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-3">
           <div>
             <span className="t-label !text-accent-text inline-flex items-center gap-1.5">
               <Sparkles size={13} />
-              <span>Receita Prática do Selye · Passo a Passo</span>
+              <span>
+                Arquitetura do Ciclo · {plan.cycleBlueprint.primaryModalityNamePt}
+              </span>
             </span>
-            <h2 className="t-h2 mt-1">{plan.executiveRecipe.headlinePt}</h2>
-            <p className="text-xs text-muted mt-0.5">
-              {plan.executiveRecipe.subheadlinePt}
+            <h2 className="t-h2 mt-1">{plan.cycleBlueprint.headlinePt}</h2>
+            <p className="text-xs text-muted mt-0.5 leading-relaxed">
+              {plan.cycleBlueprint.subheadlinePt}
             </p>
           </div>
 
@@ -766,36 +821,62 @@ export function EnergeticCalendarHub({
           </div>
         )}
 
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-          {plan.executiveRecipe.pillars.map((pillar) => (
+        {/* Distribuição Real das Sessões da Semana (Modalidade Principal + Fichas Vinculadas) */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3">
+          {plan.cycleBlueprint.weeklySlots.map((slot) => (
             <article
-              key={pillar.code}
-              className="rounded-xl border border-line bg-foreground/[0.02] p-4 flex flex-col justify-between gap-2.5"
+              key={`${slot.jsDay}-${slot.archetypeCode}`}
+              className="rounded-xl border border-line bg-foreground/[0.02] p-3.5 flex flex-col justify-between gap-2"
             >
               <div>
-                <span className="text-[10px] font-mono font-bold uppercase tracking-wider text-accent-text block">
-                  {pillar.badgePt}
-                </span>
-                <h3 className="text-sm font-semibold text-foreground mt-1">
-                  {pillar.titlePt}
+                <div className="flex items-center justify-between gap-2">
+                  <span className="px-2 py-0.5 rounded-full text-[10px] font-mono font-bold bg-foreground text-background">
+                    {slot.weekdayShortPt}
+                  </span>
+                  <span
+                    className={`text-[10px] font-mono uppercase ${
+                      slot.activityClass === "complementary"
+                        ? "text-accent-text font-semibold"
+                        : "text-muted"
+                    }`}
+                  >
+                    {slot.activityClass === "complementary"
+                      ? "Fortalecimento"
+                      : plan.modalityLabelPt}
+                  </span>
+                </div>
+                <h3 className="text-xs font-semibold text-foreground mt-2 leading-snug">
+                  {slot.titlePt}
                 </h3>
-                <p className="text-xs text-muted mt-1.5 leading-relaxed">
-                  {pillar.actionSummaryPt}
+                <p className="text-[11px] text-muted mt-1 leading-snug">
+                  {slot.purposePt}
                 </p>
               </div>
-              <div className="pt-2 border-t border-line/60 text-[11px] font-mono text-foreground flex items-center gap-1.5">
-                <Clock size={12} className="text-accent-text shrink-0" />
-                <span>{pillar.scheduleDaysLabelPt}</span>
+              <div className="pt-2 border-t border-line/60 flex items-center justify-between gap-2 text-[10px] font-mono">
+                <span className="text-muted truncate">{slot.targetZone}</span>
+                {slot.linkedRoutineId && (
+                  <Link
+                    href={`/treinos/${slot.linkedRoutineId}/editar`}
+                    className="text-accent-text font-semibold hover:underline shrink-0"
+                  >
+                    Ver ficha
+                  </Link>
+                )}
               </div>
             </article>
           ))}
         </div>
+
+        <p className="text-[11px] text-muted border-t border-line/60 pt-2.5">
+          <strong className="text-foreground">Papel da EA:</strong>{" "}
+          {plan.cycleBlueprint.eaModulationRulePt}
+        </p>
       </section>
 
       {/* ================= SEÇÃO 3: CALENDÁRIO PERENE VISUAL (8) + CHECKLIST DO DIA (4) ================= */}
       <div className="bento-grid items-start">
         {/* Esquerda (8 cols): Grade Calendário Seg -> Dom */}
-        <section className="col-span-12 xl:col-span-8 card p-5 sm:p-6 flex flex-col gap-4">
+        <section className="col-span-12 xl:col-span-8 card p-3 sm:p-6 flex flex-col gap-3 sm:gap-4">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div>
               <span className="t-label">Mapa Cíclico (Seg → Dom)</span>
@@ -823,7 +904,7 @@ export function EnergeticCalendarHub({
               <div
                 key={`empty-${idx}`}
                 aria-hidden="true"
-                className="min-h-[76px] sm:min-h-[88px] rounded-xl border border-dashed border-line/35 bg-foreground/[0.01]"
+                className="min-h-[60px] sm:min-h-[96px] rounded-lg sm:rounded-xl border border-dashed border-line/35 bg-foreground/[0.01]"
               />
             ))}
 
@@ -840,7 +921,7 @@ export function EnergeticCalendarHub({
                   type="button"
                   onClick={() => setSelectedDateStr(day.dateStr)}
                   aria-pressed={isSelected}
-                  className={`min-h-[76px] sm:min-h-[88px] rounded-xl border p-2 text-left flex flex-col justify-between transition-all cursor-pointer relative overflow-hidden ${
+                  className={`min-h-[60px] sm:min-h-[96px] rounded-lg sm:rounded-xl border p-1 sm:p-2 text-left flex flex-col justify-between transition-all cursor-pointer relative overflow-hidden ${
                     pStyle.cellBorderClass
                   } ${
                     isSelected
@@ -855,10 +936,13 @@ export function EnergeticCalendarHub({
                         day.isToday ? "text-accent-text" : "text-foreground"
                       }`}
                     >
-                      {formatDateBr(day.dateStr)}
+                      <span className="sm:hidden">{day.dateStr.slice(8, 10)}</span>
+                      <span className="hidden sm:inline">
+                        {formatDateBr(day.dateStr)}
+                      </span>
                     </span>
 
-                    <div className="flex items-center gap-0.5 shrink-0">
+                    <div className="flex items-center gap-0.5 shrink-0 max-sm:hidden">
                       {day.isTargetEventDay ? (
                         <Trophy size={12} className="text-emerald-400" />
                       ) : day.isBlockedByPersonalCommitment ? (
@@ -879,7 +963,7 @@ export function EnergeticCalendarHub({
                     <span className="text-[9px] font-mono text-muted hidden sm:block truncate">
                       {day.isTargetEventDay
                         ? "DIA-ALVO"
-                        : pStyle.shortPt}
+                        : day.primarySessionShortLabelPt || pStyle.shortPt}
                     </span>
                   </div>
 
@@ -1033,6 +1117,17 @@ export function EnergeticCalendarHub({
                     <p className="text-[11px] text-muted mt-1 leading-relaxed">
                       {item.detailPt}
                     </p>
+                    {item.linkedRoutineId && (
+                      <div className="mt-2 flex items-center gap-2">
+                        <Link
+                          href={`/treinos/${item.linkedRoutineId}/editar`}
+                          className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md border border-profundo/40 bg-lima/15 text-[10px] font-mono font-semibold text-accent-text hover:underline"
+                        >
+                          <Dumbbell size={10} />
+                          <span>Ficha: {item.linkedRoutineTitle || "Abrir"}</span>
+                        </Link>
+                      </div>
+                    )}
                   </div>
 
                   {item.isCustom && item.customCommitmentId && (
@@ -1073,13 +1168,13 @@ export function EnergeticCalendarHub({
       {/* ================= SEÇÃO 4: BLOCOS SEMANAIS (PERIODIZAÇÃO) ================= */}
       <section className="card p-5 sm:p-6 flex flex-col gap-4">
         <div>
-          <span className="t-label">Periodização Semanal Inteligente</span>
+          <span className="t-label">Plano Semanal Inteligente</span>
           <h2 className="t-h2 mt-0.5">
             Fases da Sua Jornada ({plan.weeklyMilestones.length}{" "}
             {plan.weeklyMilestones.length === 1 ? "Semana" : "Semanas"})
           </h2>
           <p className="text-xs text-muted mt-0.5">
-            Cada semana tem um propósito claro — alternando construção, absorção e polimento final para elevar seu EA sem esgotamento.
+            Cada semana tem um foco claro — alternando evolução, descanso e semana leve antes da prova para você chegar bem sem se esgotar.
           </p>
         </div>
 
@@ -1178,7 +1273,7 @@ export function EnergeticCalendarHub({
                 </span>
               </div>
               <p className="text-[11px] text-muted mt-1">
-                Inclui semanas de construção + polimento final (Taper) para chegar no ápice físico no dia da prova.
+                Inclui semanas de evolução + semana leve pré-prova para chegar descansado e no seu melhor no dia D.
               </p>
             </button>
 
@@ -1224,14 +1319,59 @@ export function EnergeticCalendarHub({
               <span className="t-aux font-semibold text-foreground">
                 Modalidade Principal
               </span>
-              <input
-                type="text"
-                value={goalModality}
-                onChange={(e) => setGoalModality(e.target.value)}
-                placeholder="Ex: Vôlei de Praia & Força, Corrida, Musculação"
+              <select
+                value={goalModalityCode}
+                onChange={(e) => {
+                  const next = e.target.value as CoreModalityCode;
+                  setGoalModalityCode(next);
+                  setGoalIncludeStrength(next !== "strength");
+                  setGoalTargetKpiValueStr("");
+                }}
                 className="input h-10 text-xs"
+              >
+                {CORE_MODALITY_CODES.map((code) => (
+                  <option key={code} value={code}>
+                    {MODALITY_REGISTRY[code].namePt}
+                  </option>
+                ))}
+              </select>
+            </label>
+          </div>
+
+          {/* KPI-Alvo da Modalidade + Fortalecimento Complementar */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 items-end">
+            <label className="flex flex-col gap-1.5">
+              <span className="t-aux font-semibold text-foreground">
+                Meta em {selectedGoalPrimaryKpi.shortLabelPt} (opcional ·{" "}
+                {selectedGoalPrimaryKpi.unit})
+              </span>
+              <input
+                type="number"
+                step="any"
+                value={goalTargetKpiValueStr}
+                onChange={(e) => setGoalTargetKpiValueStr(e.target.value)}
+                placeholder={`Ref.: ${
+                  selectedGoalPrimaryKpi.experienceRanges[
+                    snapshot.athleteExperienceLevel
+                  ].max
+                } ${selectedGoalPrimaryKpi.unit}`}
+                className="input h-10 text-xs font-mono"
               />
             </label>
+
+            {goalModalityCode !== "strength" && (
+              <label className="flex items-center gap-2.5 h-10 px-3 rounded-xl border border-line bg-foreground/[0.02] cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={goalIncludeStrength}
+                  onChange={(e) => setGoalIncludeStrength(e.target.checked)}
+                  className="accent-[#C7F000]"
+                />
+                <span className="text-xs text-foreground font-medium">
+                  Incluir fortalecimento complementar na semana
+                </span>
+              </label>
+            )}
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -1324,10 +1464,10 @@ export function EnergeticCalendarHub({
             </div>
 
             <p className="text-xs text-osso font-medium leading-snug">
-              {liveSimulation.executiveRecipe.headlinePt}
+              {liveSimulation.cycleBlueprint.headlinePt}
             </p>
             <p className="text-[11px] text-nevoa leading-relaxed">
-              {liveSimulation.feasibilityExplanationPt}
+              {liveSimulation.cycleBlueprint.subheadlinePt} {liveSimulation.feasibilityExplanationPt}
             </p>
 
             {liveSimulation.recommendedAlternativeDateStr && (

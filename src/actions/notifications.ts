@@ -18,6 +18,7 @@ import {
   type SelyeNotificationEventType,
 } from "@/core/notifications/notification-templates";
 import type { ProactivePlanAlert } from "@/core/planning/daily-plan-coach";
+import { buildCoachAlerts, type CoachAlert } from "@/core/notifications/coach-alerts";
 
 export interface StoredNotificationRecord {
   id: string;
@@ -43,6 +44,7 @@ export interface SmartNotificationFeed {
   unreadCount: number;
   morningCheckinPending: boolean;
   planAlert: ProactivePlanAlert | null;
+  coachAlerts: CoachAlert[];
 }
 
 const DEFAULT_PREFERENCE_CATALOG: {
@@ -446,12 +448,30 @@ export async function getSmartNotificationFeed(): Promise<SmartNotificationFeed>
       planAlert = null;
     }
 
+    let coachAlerts: CoachAlert[] = [];
+    try {
+      const { getEvolutionData } = await import("./evolution");
+      const evo = await getEvolutionData();
+      const dash = evo.modalityKpiDashboard;
+      if (dash) {
+        coachAlerts = buildCoachAlerts({
+          modalityShortNamePt: dash.modalityShortNamePt,
+          onTrack: dash.onTrack,
+          guardrailWarnings: dash.guardrailWarnings,
+          casualSessionsLast7d: dash.casualSessionsLast7d,
+        });
+      }
+    } catch {
+      coachAlerts = [];
+    }
+
     const unreadDbCount = notifications.filter((n) => !n.isRead).length;
     const unreadCount =
       unreadDbCount +
       proposals.length +
       (morningCheckinPending ? 1 : 0) +
-      (planAlert ? 1 : 0);
+      (planAlert ? 1 : 0) +
+      coachAlerts.filter((a) => a.priority !== "info").length;
 
     return {
       proposals,
@@ -459,6 +479,7 @@ export async function getSmartNotificationFeed(): Promise<SmartNotificationFeed>
       unreadCount,
       morningCheckinPending,
       planAlert,
+      coachAlerts,
     };
   } catch (err) {
     console.error("[getSmartNotificationFeed] Erro:", err);
@@ -468,6 +489,7 @@ export async function getSmartNotificationFeed(): Promise<SmartNotificationFeed>
       unreadCount: 0,
       morningCheckinPending: false,
       planAlert: null,
+      coachAlerts: [],
     };
   }
 }

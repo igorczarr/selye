@@ -11,6 +11,7 @@ import {
   planEnergeticGrowthCurve,
   selectOptimalWorkoutJsDays,
   type EnergeticGrowthPlanResult,
+  type LinkedRoutineOption,
   type PlanningGoalMode,
 } from "@/core/planning/energetic-cycle-planner";
 import {
@@ -22,12 +23,26 @@ import {
   evaluateDailyPlanCoach,
   type DailyPlanCoachResult,
 } from "@/core/planning/daily-plan-coach";
+import {
+  MODALITY_REGISTRY,
+  inferCoreModalityFromText,
+  resolveCoreModalityCode,
+  type CoreModalityCode,
+  type ExperienceLevel,
+} from "@/core/modalities";
+import { estimateRoutineDurationMinutes } from "@/lib/routine-metrics";
+import { calculateUnifiedSessionLoad } from "@/core/performance/training-load";
 
 export interface SavedPlanningGoalRecord {
   id: string;
   mode: PlanningGoalMode;
   eventTitle: string;
+  modalityCode: CoreModalityCode;
   modalityLabel: string;
+  complementaryModalityCode: CoreModalityCode | null;
+  primaryKpiKey: string | null;
+  targetKpiValue: number | null;
+  kpiUnit: string | null;
   startDate: string;
   targetDate: string;
   initialEa: number;
@@ -48,6 +63,10 @@ export interface ActivePlanningSnapshot {
   progress: EnergeticPlanLiveProgress;
   dailyCoach: DailyPlanCoachResult;
   commitments: StoredCalendarCommitmentInput[];
+  linkedRoutines: LinkedRoutineOption[];
+  athletePrimaryModality: CoreModalityCode;
+  athleteComplementaryModality: CoreModalityCode | null;
+  athleteExperienceLevel: ExperienceLevel;
   realCurrentEa: number;
   personalCapacityEa: number;
   strengthRecordsCount: number;
@@ -58,7 +77,12 @@ export interface ActivePlanningSnapshot {
 export interface SavePlanningGoalInput {
   mode: PlanningGoalMode;
   eventTitle: string;
+  modalityCode?: CoreModalityCode;
   modalityLabel?: string;
+  complementaryModalityCode?: CoreModalityCode | null;
+  primaryKpiKey?: string | null;
+  targetKpiValue?: number | null;
+  kpiUnit?: string | null;
   targetDate: string; // YYYY-MM-DD
   targetEa: number;
   initialEa?: number;
@@ -112,64 +136,155 @@ export async function getActivePlanningSnapshot(): Promise<ActivePlanningSnapsho
   const adaptive = dashboard.performanceSummary.adaptiveProfile;
   const todayDateStr = new Date().toISOString().split("T")[0];
 
-  const [goalRows, commitmentRows, checkinRows, prRows] = await Promise.all([
-    db
-      .select()
-      .from(schema.planningGoals)
-      .where(eq(schema.planningGoals.userId, user.id))
-      .orderBy(desc(schema.planningGoals.createdAt))
-      .limit(12),
-    db
-      .select()
-      .from(schema.calendarCommitments)
-      .where(eq(schema.calendarCommitments.userId, user.id))
-      .orderBy(desc(schema.calendarCommitments.localDate))
-      .limit(120),
-    db
-      .select()
-      .from(schema.planDailyCheckins)
-      .where(
-        and(
-          eq(schema.planDailyCheckins.userId, user.id),
-          eq(schema.planDailyCheckins.completed, true)
+  const [goalRows, commitmentRows, checkinRows, prRows, profileRows, userSportRows] =
+    await Promise.all([
+      db
+        .select()
+        .from(schema.planningGoals)
+        .where(eq(schema.planningGoals.userId, user.id))
+        .orderBy(desc(schema.planningGoals.createdAt))
+        .limit(12),
+      db
+        .select()
+        .from(schema.calendarCommitments)
+        .where(eq(schema.calendarCommitments.userId, user.id))
+        .orderBy(desc(schema.calendarCommitments.localDate))
+        .limit(120),
+      db
+        .select()
+        .from(schema.planDailyCheckins)
+        .where(
+          and(
+            eq(schema.planDailyCheckins.userId, user.id),
+            eq(schema.planDailyCheckins.completed, true)
+          )
         )
-      )
-      .limit(400),
-    db
-      .select({ id: schema.setLogs.id })
-      .from(schema.setLogs)
-      .innerJoin(
-        schema.workoutSessions,
-        eq(schema.setLogs.sessionId, schema.workoutSessions.id)
-      )
-      .where(
-        and(
-          eq(schema.workoutSessions.userId, user.id),
-          eq(schema.setLogs.isCompleted, true)
+        .limit(400),
+      db
+        .select({ id: schema.setLogs.id })
+        .from(schema.setLogs)
+        .innerJoin(
+          schema.workoutSessions,
+          eq(schema.setLogs.sessionId, schema.workoutSessions.id)
         )
-      )
-      .limit(30),
-  ]);
+        .where(
+          and(
+            eq(schema.workoutSessions.userId, user.id),
+            eq(schema.setLogs.isCompleted, true)
+          )
+        )
+        .limit(30),
+      db
+        .select()
+        .from(schema.profiles)
+        .where(eq(schema.profiles.userId, user.id))
+        .limit(1),
+      db
+        .select({
+          role: schema.userSports.role,
+          isPriority: schema.userSports.isPriority,
+          experienceLevel: schema.userSports.experienceLevel,
+          targetKpiKey: schema.userSports.targetKpiKey,
+          targetKpiValue: schema.userSports.targetKpiValue,
+          targetKpiUnit: schema.userSports.targetKpiUnit,
+          code: schema.sports.code,
+        })
+        .from(schema.userSports)
+        .innerJoin(schema.sports, eq(schema.userSports.sportId, schema.sports.id))
+        .where(eq(schema.userSports.userId, user.id)),
+    ]);
 
-  const mappedGoals: SavedPlanningGoalRecord[] = goalRows.map((g) => ({
-    id: g.id,
-    mode:
-      g.mode === "competition" ? "competition" : "wellness_constancy",
-    eventTitle: g.eventTitle,
-    modalityLabel: g.modalityLabel,
-    startDate: normalizeDateString(g.startDate),
-    targetDate: normalizeDateString(g.targetDate),
-    initialEa: g.initialEa,
-    targetEa: g.targetEa,
-    projectedPeakEa: g.projectedPeakEa,
-    targetDaysPerWeek: g.targetDaysPerWeek,
-    preferredWorkoutDays: Array.isArray(g.preferredWorkoutDays)
-      ? g.preferredWorkoutDays
-      : selectOptimalWorkoutJsDays(g.targetDaysPerWeek),
-    status: g.status,
-    notes: g.notes,
-    createdAt: new Date(g.createdAt).toISOString(),
-  }));
+  const primarySportRow =
+    userSportRows.find((s) => s.role === "primary") ||
+    userSportRows.find((s) => s.isPriority) ||
+    userSportRows[0];
+
+  const athletePrimaryModality: CoreModalityCode =
+    profileRows[0]?.eaCalibration?.inputs?.primaryModality ||
+    resolveCoreModalityCode(primarySportRow?.code) ||
+    "strength";
+
+  const compFromCalib =
+    profileRows[0]?.eaCalibration?.inputs?.complementaryModalities?.[0] || null;
+  const compFromSports =
+    userSportRows
+      .filter((s) => s.role === "complementary")
+      .map((s) => resolveCoreModalityCode(s.code))
+      .find((c): c is CoreModalityCode => c !== null && c !== athletePrimaryModality) ||
+    null;
+  const athleteComplementaryModality: CoreModalityCode | null =
+    compFromCalib || compFromSports || (athletePrimaryModality !== "strength" ? "strength" : null);
+
+  const validLevels: ExperienceLevel[] = [
+    "beginner",
+    "intermediate",
+    "advanced",
+    "competitive",
+  ];
+  const rawLevel = (profileRows[0]?.experienceLevel ||
+    primarySportRow?.experienceLevel ||
+    "intermediate") as ExperienceLevel;
+  const athleteExperienceLevel: ExperienceLevel = validLevels.includes(rawLevel)
+    ? rawLevel
+    : "intermediate";
+
+  const linkedRoutines: LinkedRoutineOption[] = (dashboard.routines || []).map(
+    (r: any) => {
+      const firstTpl = r.templates?.[0];
+      const prescs = firstTpl?.prescriptions || [];
+      const estDur = estimateRoutineDurationMinutes(prescs);
+      const estLoad =
+        estDur > 0
+          ? calculateUnifiedSessionLoad({
+              durationMinutes: estDur,
+              rpe: 7.5,
+              modalityCode: r.modalityCode || "strength",
+            })
+          : undefined;
+      return {
+        id: r.id,
+        title: r.title,
+        modalityCode: r.modalityCode || "strength",
+        dayOfWeek:
+          typeof firstTpl?.dayOfWeek === "number" ? firstTpl.dayOfWeek : null,
+        estimatedDurationMin: estDur || undefined,
+        estimatedLoadUa: estLoad,
+      };
+    }
+  );
+
+  const mappedGoals: SavedPlanningGoalRecord[] = goalRows.map((g) => {
+    const resolvedMod = inferCoreModalityFromText(
+      g.modalityCode || g.modalityLabel,
+      athletePrimaryModality
+    );
+    return {
+      id: g.id,
+      mode:
+        g.mode === "competition" ? "competition" : "wellness_constancy",
+      eventTitle: g.eventTitle,
+      modalityCode: resolvedMod,
+      modalityLabel: g.modalityLabel || MODALITY_REGISTRY[resolvedMod].shortNamePt,
+      complementaryModalityCode: g.complementaryModalityCode
+        ? resolveCoreModalityCode(g.complementaryModalityCode)
+        : null,
+      primaryKpiKey: g.primaryKpiKey ?? null,
+      targetKpiValue: g.targetKpiValue ?? null,
+      kpiUnit: g.kpiUnit ?? null,
+      startDate: normalizeDateString(g.startDate),
+      targetDate: normalizeDateString(g.targetDate),
+      initialEa: g.initialEa,
+      targetEa: g.targetEa,
+      projectedPeakEa: g.projectedPeakEa,
+      targetDaysPerWeek: g.targetDaysPerWeek,
+      preferredWorkoutDays: Array.isArray(g.preferredWorkoutDays)
+        ? g.preferredWorkoutDays
+        : selectOptimalWorkoutJsDays(g.targetDaysPerWeek),
+      status: g.status,
+      notes: g.notes,
+      createdAt: new Date(g.createdAt).toISOString(),
+    };
+  });
 
   const activeGoal =
     mappedGoals.find((g) => g.status === "active") || null;
@@ -215,7 +330,14 @@ export async function getActivePlanningSnapshot(): Promise<ActivePlanningSnapsho
     ? planEnergeticGrowthCurve({
         mode: activeGoal.mode,
         eventTitle: activeGoal.eventTitle,
+        modalityCode: activeGoal.modalityCode,
         modalityLabelPt: activeGoal.modalityLabel,
+        complementaryModalityCode: activeGoal.complementaryModalityCode,
+        experienceLevel: athleteExperienceLevel,
+        primaryKpiKey: activeGoal.primaryKpiKey,
+        targetKpiValue: activeGoal.targetKpiValue,
+        kpiUnit: activeGoal.kpiUnit,
+        userRoutines: linkedRoutines,
         currentEa: activeGoal.initialEa,
         targetEa: activeGoal.targetEa,
         startDateStr: activeGoal.startDate,
@@ -228,13 +350,22 @@ export async function getActivePlanningSnapshot(): Promise<ActivePlanningSnapsho
       })
     : planEnergeticGrowthCurve({
         mode: "wellness_constancy",
-        eventTitle: "Ciclo de Vitalidade & Constância",
-        modalityLabelPt: "Multimodal & Força",
+        eventTitle: `Constância & Evolução · ${MODALITY_REGISTRY[athletePrimaryModality].shortNamePt}`,
+        modalityCode: athletePrimaryModality,
+        modalityLabelPt: MODALITY_REGISTRY[athletePrimaryModality].shortNamePt,
+        complementaryModalityCode: athleteComplementaryModality,
+        experienceLevel: athleteExperienceLevel,
+        primaryKpiKey: primarySportRow?.targetKpiKey ?? null,
+        targetKpiValue: primarySportRow?.targetKpiValue ?? null,
+        kpiUnit: primarySportRow?.targetKpiUnit ?? null,
+        userRoutines: linkedRoutines,
         currentEa: baseCurrentEa,
         targetEa: Math.round(baseCurrentEa * 1.15),
         startDateStr: todayDateStr,
         targetDateStr: addDaysUtc(todayDateStr, 28),
         targetDaysPerWeek: dashboard.stats.targetDaysPerWeek || 4,
+        preferredWorkoutJsDays:
+          profileRows[0]?.eaCalibration?.inputs?.preferredWorkoutDays || undefined,
         blockedDates,
         strengthRecordsCount,
         monthlyVolumeKg: dashboard.stats.monthlyVolumeKg,
@@ -265,6 +396,10 @@ export async function getActivePlanningSnapshot(): Promise<ActivePlanningSnapsho
     progress,
     dailyCoach,
     commitments,
+    linkedRoutines,
+    athletePrimaryModality,
+    athleteComplementaryModality,
+    athleteExperienceLevel,
     realCurrentEa: activeGoal ? realCurrentEa : baseCurrentEa,
     personalCapacityEa: adaptive.personalCapacityEa,
     strengthRecordsCount,
@@ -327,10 +462,37 @@ export async function savePlanningGoal(input: SavePlanningGoalInput) {
     .filter((b) => b.blocksWorkout)
     .map((b) => normalizeDateString(b.localDate));
 
+  const resolvedModalityCode: CoreModalityCode =
+    input.modalityCode ||
+    inferCoreModalityFromText(input.modalityLabel, "strength");
+  const modSpec = MODALITY_REGISTRY[resolvedModalityCode];
+  const resolvedLabel = input.modalityLabel?.trim() || modSpec.shortNamePt;
+  const resolvedComp =
+    input.complementaryModalityCode !== undefined
+      ? input.complementaryModalityCode
+      : resolvedModalityCode !== "strength"
+        ? "strength"
+        : null;
+  const kpiDef =
+    modSpec.kpis.find((k) => k.key === input.primaryKpiKey) ||
+    modSpec.kpis.find((k) => k.isPrimaryGoalMetric) ||
+    modSpec.kpis[0];
+
+  const [sportRow] = await db
+    .select({ id: schema.sports.id })
+    .from(schema.sports)
+    .where(eq(schema.sports.code, resolvedModalityCode))
+    .limit(1);
+
   const computedPlan = planEnergeticGrowthCurve({
     mode: input.mode,
     eventTitle: cleanTitle,
-    modalityLabelPt: input.modalityLabel?.trim() || "Multimodal & Força",
+    modalityCode: resolvedModalityCode,
+    modalityLabelPt: resolvedLabel,
+    complementaryModalityCode: resolvedComp,
+    primaryKpiKey: kpiDef.key,
+    targetKpiValue: input.targetKpiValue ?? null,
+    kpiUnit: input.kpiUnit || kpiDef.unit,
     currentEa: initialEa,
     targetEa: requestedTargetEa,
     startDateStr: todayDateStr,
@@ -356,9 +518,18 @@ export async function savePlanningGoal(input: SavePlanningGoalInput) {
     .insert(schema.planningGoals)
     .values({
       userId: user.id,
+      sportId: sportRow?.id || null,
+      modalityCode: resolvedModalityCode,
+      complementaryModalityCode: resolvedComp,
       mode: input.mode,
       eventTitle: cleanTitle,
-      modalityLabel: input.modalityLabel?.trim() || "Multimodal & Força",
+      modalityLabel: resolvedLabel,
+      primaryKpiKey: kpiDef.key,
+      targetKpiValue:
+        typeof input.targetKpiValue === "number" && !Number.isNaN(input.targetKpiValue)
+          ? input.targetKpiValue
+          : null,
+      kpiUnit: input.kpiUnit || kpiDef.unit,
       startDate: todayDateStr,
       targetDate: computedPlan.targetDateStr,
       initialEa,
@@ -378,7 +549,7 @@ export async function savePlanningGoal(input: SavePlanningGoalInput) {
       title: cleanTitle,
       loadEa: computedPlan.projectedPeakEa,
       actionUrl: "/calendario",
-      customNotes: `${computedPlan.executiveRecipe.headlinePt} ${computedPlan.executiveRecipe.pillars[0]?.actionSummaryPt || ""}`,
+      customNotes: `${computedPlan.cycleBlueprint.headlinePt}. ${computedPlan.cycleBlueprint.subheadlinePt}`,
     },
   });
 

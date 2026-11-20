@@ -7,6 +7,7 @@ import type { EvolutionData } from "@/actions/evolution";
 import { WEEKDAYS_MONDAY_FIRST } from "@/lib/week";
 import { ExerciseLink } from "@/components/catalog/exercise-link";
 import { DailyDecisionCard } from "@/components/home/daily-decision-card";
+import { ModalityKpiPanel } from "@/components/evolution/modality-kpi-panel";
 import {
   Activity,
   Award,
@@ -138,6 +139,8 @@ export function EvolutionHub({
     acwrResult,
     recoveryBudget,
     adaptiveProfile,
+    modalityKpiDashboard,
+    onboardingCompleted,
     dailyDecision,
     todayCheckin,
     recommendations,
@@ -252,7 +255,11 @@ export function EvolutionHub({
               }`}
             >
               <Icon size={14} />
-              <span>{t.label}</span>
+              <span>
+                {t.id === "forca"
+                  ? `Indicadores · ${modalityKpiDashboard.modalityShortNamePt}`
+                  : t.label}
+              </span>
             </button>
           );
         })}
@@ -266,6 +273,14 @@ export function EvolutionHub({
             decision={dailyDecision}
             initialCheckin={todayCheckin}
             adaptiveProfile={adaptiveProfile}
+          />
+
+          {/* KPIs da Modalidade & Indicador "Nos Trilhos?" (Fase 3) */}
+          <ModalityKpiPanel
+            dashboard={modalityKpiDashboard}
+            onboardingCompleted={onboardingCompleted}
+            variant="compact"
+            onOpenFullTab={() => handleTabChange("forca")}
           />
 
           <div className="bento-grid">
@@ -369,7 +384,7 @@ export function EvolutionHub({
             <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-3">
               <div>
                 <span className="t-label !text-accent-text">
-                  Fisiologia Personalizada · Energia Adaptativa (EA)
+                  Seu Corpo · Energia da Semana (EA)
                 </span>
                 <h2 className="t-h2 mt-0.5">
                   Reserva Adaptativa Pessoal (Balanço Bidirecional 7d)
@@ -418,7 +433,7 @@ export function EvolutionHub({
                   <span className="text-xs font-mono text-muted">EA</span>
                 </p>
                 <span className="t-aux text-muted">
-                  Sono restaurador, mobilidade e supercompensação
+                  Sono restaurador, mobilidade e recuperação ativa
                 </span>
               </div>
 
@@ -770,9 +785,16 @@ export function EvolutionHub({
         </div>
       )}
 
-      {/* ================= ABA 3: FORÇA (VOLUME & PRS LADO A LADO) ================= */}
+      {/* ================= ABA 3: KPIS DA MODALIDADE + FORÇA / PRS ================= */}
       {activeTab === "forca" && (
-        <div className="bento-grid items-start">
+        <div className="flex flex-col gap-6">
+          <ModalityKpiPanel
+            dashboard={modalityKpiDashboard}
+            onboardingCompleted={onboardingCompleted}
+            variant="full"
+          />
+
+          <div className="bento-grid items-start">
           <section className="col-span-12 xl:col-span-4 grid grid-cols-1 sm:grid-cols-3 xl:grid-cols-1 gap-3">
             <div className="card p-5">
               <span className="t-label">Volume (Últimos 28d)</span>
@@ -780,7 +802,7 @@ export function EvolutionHub({
                 {formatVolume(metrics.monthlyVolumeKg)}
               </p>
               <span className="t-aux text-muted mt-1 block">
-                Tonelagem efetiva do ciclo
+                Peso total levantado no ciclo
               </span>
             </div>
             <div className="card p-5">
@@ -856,6 +878,7 @@ export function EvolutionHub({
               </div>
             )}
           </section>
+          </div>
         </div>
       )}
 

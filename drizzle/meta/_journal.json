@@ -22,6 +22,20 @@
       "when": 1794611303165,
       "tag": "0002_quick_the_hunter",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1795127021988,
+      "tag": "0003_noisy_fenris",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1795128820917,
+      "tag": "0004_petite_scourge",
+      "breakpoints": true
     }
   ]
 }

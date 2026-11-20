@@ -4,7 +4,11 @@ import { db } from "@/db";
 import * as schema from "@/db/schema";
 import { eq, desc, and } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
-import { getOrCreateDemoUser } from "./workout";
+import {
+  getOrCreateDemoUser,
+  resolveAthleteModalityProfileForUser,
+  resolveSportIdForModalityCode,
+} from "./workout";
 import { dispatchSmartNotification } from "./notifications";
 import {
   isDuplicateActivity,
@@ -12,6 +16,12 @@ import {
   type IncomingExternalActivity,
 } from "@/core/integrations/dedupe";
 import { parseActivityFileContent } from "@/core/integrations/activity-file-parser";
+import {
+  classifyExternalActivityBatch,
+  classifyImportedOrFreeActivity,
+  type ActivityClassChoice,
+} from "@/core/integrations/activity-classifier";
+import type { ActivityClass } from "@/core/modalities";
 import { calculateUnifiedSessionLoad } from "@/core/performance/training-load";
 
 export interface IntegrationStatus {
@@ -153,10 +163,18 @@ export async function syncExternalActivities(
     };
   }
 
+  const athleteProfile = await resolveAthleteModalityProfileForUser(user.id);
+  const classification = classifyImportedOrFreeActivity({
+    activityModalityCode: sampleIncoming.sportCode,
+    athleteProfile,
+    explicitClass: "auto",
+  });
+
   // 3. Inserir no histórico de atividades
   await db.insert(schema.activityEvents).values({
     userId: user.id,
     source: provider,
+    activityClass: classification.activityClass,
     externalActivityId: sampleIncoming.externalActivityId,
     localDate: today,
     durationMinutes: sampleIncoming.durationMinutes,
@@ -175,6 +193,7 @@ export async function syncExternalActivities(
     );
 
   revalidatePath("/integracoes");
+  revalidatePath("/evolucao");
   revalidatePath("/performance");
   revalidatePath("/analytics");
 
@@ -182,17 +201,35 @@ export async function syncExternalActivities(
     success: true,
     isDuplicate: false,
     syncedActivityId: sampleIncoming.externalActivityId,
+    activityClass: classification.activityClass,
+    classificationBadgePt: classification.presentation.badgePt,
+    classificationRationalePt: classification.rationalePt,
   };
 }
 
+export interface ImportedActivitySummaryItem {
+  title: string;
+  modalityCode: string;
+  localDate: string;
+  durationMinutes: number;
+  distanceKm: number | null;
+  loadEa: number;
+  activityClass: ActivityClass;
+  badgePt: string;
+  titlePt: string;
+  rationalePt: string;
+}
+
 /**
- * Importa arquivo real de atividade esportiva (.GPX, .TCX, .CSV, .JSON) com deduplicação automática
- * e conversão imediata em Energia Adaptativa (EA) — §Fase 15.
+ * Importa arquivo real de atividade esportiva (.GPX, .TCX, .CSV, .JSON) com deduplicação automática,
+ * classificação automática entre Modalidade Principal, Suporte e Atividade Solta (Fase 6)
+ * e conversão imediata em Energia Adaptativa (EA).
  */
 export async function importExternalActivityFile(input: {
   fileName: string;
   content: string;
   provider?: "strava" | "apple_health" | "health_connect" | "garmin";
+  activityClassOverride?: ActivityClassChoice;
 }) {
   const user = await getOrCreateDemoUser();
   const provider = input.provider || "strava";
@@ -204,16 +241,29 @@ export async function importExternalActivityFile(input: {
     );
   }
 
-  const existingRecords = await db
-    .select({
-      id: schema.activityEvents.id,
-      externalActivityId: schema.activityEvents.externalActivityId,
-      source: schema.activityEvents.source,
-      startedAt: schema.activityEvents.createdAt,
-      durationMinutes: schema.activityEvents.durationMinutes,
-    })
-    .from(schema.activityEvents)
-    .where(eq(schema.activityEvents.userId, user.id));
+  const [existingRecords, athleteProfile, commitmentRows] = await Promise.all([
+    db
+      .select({
+        id: schema.activityEvents.id,
+        externalActivityId: schema.activityEvents.externalActivityId,
+        source: schema.activityEvents.source,
+        startedAt: schema.activityEvents.createdAt,
+        durationMinutes: schema.activityEvents.durationMinutes,
+      })
+      .from(schema.activityEvents)
+      .where(eq(schema.activityEvents.userId, user.id)),
+    resolveAthleteModalityProfileForUser(user.id),
+    db
+      .select({
+        localDate: schema.calendarCommitments.localDate,
+      })
+      .from(schema.calendarCommitments)
+      .where(eq(schema.calendarCommitments.userId, user.id)),
+  ]);
+
+  const plannedDatesSet = new Set(
+    commitmentRows.map((c) => String(c.localDate))
+  );
 
   const existingFormatted: ExistingActivity[] = existingRecords.map((r) => ({
     id: r.id,
@@ -223,12 +273,20 @@ export async function importExternalActivityFile(input: {
     durationMinutes: r.durationMinutes,
   }));
 
+  const classifiedBatch = classifyExternalActivityBatch({
+    activities: parsedList,
+    athleteProfile,
+    explicitOverride: input.activityClassOverride ?? "auto",
+    plannedDatesSet,
+  });
+
   let importedCount = 0;
   let skippedDuplicatesCount = 0;
   let totalEaAdded = 0;
   const importedTitles: string[] = [];
+  const importedItems: ImportedActivitySummaryItem[] = [];
 
-  for (const act of parsedList) {
+  for (const { activity: act, classification } of classifiedBatch) {
     const incoming: IncomingExternalActivity = {
       externalActivityId: act.externalId,
       source: provider,
@@ -251,17 +309,21 @@ export async function importExternalActivityFile(input: {
       .toString(36)
       .substring(2, 7)}`;
 
+    const sportId = await resolveSportIdForModalityCode(act.modalityCode);
+
     const [session] = await db
       .insert(schema.workoutSessions)
       .values({
         userId: user.id,
         title: act.title,
         modalityCode: act.modalityCode,
+        sportId,
+        activityClass: classification.activityClass,
         status: "completed",
         startedAt,
         finishedAt,
         rpeSession: act.estimatedRpe,
-        notes: `Importado via ${input.fileName} (${act.sourceFormat.toUpperCase()})`,
+        notes: `Importado via ${input.fileName} (${act.sourceFormat.toUpperCase()}) · ${classification.presentation.titlePt}`,
         clientSessionId,
         timezone: "America/Sao_Paulo",
       })
@@ -271,6 +333,7 @@ export async function importExternalActivityFile(input: {
       userId: user.id,
       sessionId: session.id,
       source: provider,
+      activityClass: classification.activityClass,
       externalActivityId: act.externalId,
       localDate: act.localDate,
       durationMinutes: act.durationMinutes,
@@ -305,10 +368,22 @@ export async function importExternalActivityFile(input: {
     totalEaAdded += loadEa;
     importedCount++;
     importedTitles.push(
-      `${act.title} (${act.durationMinutes} min${
+      `${act.title} [${classification.presentation.badgePt}] (${act.durationMinutes} min${
         act.distanceKm ? ` · ${act.distanceKm} km` : ""
       } · -${loadEa} EA)`
     );
+    importedItems.push({
+      title: act.title,
+      modalityCode: act.modalityCode,
+      localDate: act.localDate,
+      durationMinutes: act.durationMinutes,
+      distanceKm: act.distanceKm,
+      loadEa,
+      activityClass: classification.activityClass,
+      badgePt: classification.presentation.badgePt,
+      titlePt: classification.presentation.titlePt,
+      rationalePt: classification.rationalePt,
+    });
 
     existingFormatted.push({
       id: session.id,
@@ -331,6 +406,7 @@ export async function importExternalActivityFile(input: {
   }
 
   revalidatePath("/");
+  revalidatePath("/calendario");
   revalidatePath("/evolucao");
   revalidatePath("/integracoes");
   revalidatePath("/comunidade/desafios");
@@ -340,6 +416,7 @@ export async function importExternalActivityFile(input: {
     skippedDuplicatesCount,
     totalEaAdded,
     importedTitles,
+    importedItems,
   };
 }
 

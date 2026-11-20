@@ -90,4 +90,27 @@ describe("Phase 12 - Morning Check-in (10s) & Explainable Daily Decision Engine"
     assert.equal(decision.tier, "yellow_modulate");
     assert.ok(decision.whyExplanation.includes("380 EA ontem"));
   });
+
+  test("Personaliza a Decisão do Dia citando a modalidade e a meta ativa do atleta", () => {
+    const decision = evaluateDailyDecision({
+      checkin: {
+        sleepQuality: 5,
+        energyLevel: 4,
+        muscleFreshness: 4,
+        moodLevel: 4,
+      },
+      yesterdayLoadUa: 0,
+      recoveryBudgetUsagePercent: 40,
+      recoveryBudgetRemainingUa: 1000,
+      acwr: 1.0,
+      consecutiveTrainingDays: 0,
+      modalityShortNamePt: "Corrida",
+      activeGoalTitle: "10 km em 45 min",
+    });
+
+    assert.equal(decision.tier, "green_push");
+    assert.equal(decision.modalityContextBadge, "Corrida · 10 km em 45 min");
+    assert.ok(decision.headline.includes("Corrida"));
+    assert.ok(decision.suggestedAction.includes("10 km em 45 min"));
+  });
 });

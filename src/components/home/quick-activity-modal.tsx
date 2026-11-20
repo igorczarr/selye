@@ -1,36 +1,61 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useEffect, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { logFreeActivity, startFreeActivity } from "@/actions/workout";
 import {
   calculateUnifiedSessionLoad,
   getModalityProfile,
 } from "@/core/performance/training-load";
+import {
+  classifyImportedOrFreeActivity,
+  getDefaultAthleteProfileFallback,
+  type ActivityClassChoice,
+} from "@/core/integrations/activity-classifier";
+import type { CoreModalityCode } from "@/core/modalities";
 import { ModalPortal } from "@/components/ui/modal-portal";
-import { Plus, Play, Check, X, Clock, Flame, Zap } from "lucide-react";
+import { Plus, Play, Check, X, Clock, Flame, Zap, Sparkles } from "lucide-react";
 
 const ACTIVITY_PRESETS = [
   { code: "running", label: "Corrida" },
   { code: "cycling", label: "Ciclismo" },
   { code: "futsal", label: "Futsal" },
+  { code: "football", label: "Futebol" },
   { code: "beach_volleyball", label: "Vôlei de Praia" },
-  { code: "footvolley", label: "Futevôlei" },
   { code: "swimming", label: "Natação" },
-  { code: "walking", label: "Caminhada" },
-  { code: "beach_tennis", label: "Beach Tennis" },
   { code: "martial_arts", label: "Lutas / Jiu-Jitsu" },
+  { code: "calisthenics", label: "Calistenia" },
   { code: "strength", label: "Musculação" },
   { code: "functional", label: "Funcional" },
+  { code: "walking", label: "Caminhada" },
+  { code: "footvolley", label: "Futevôlei" },
+  { code: "beach_tennis", label: "Beach Tennis" },
   { code: "other", label: "Outra atividade" },
 ] as const;
+
+const ACTIVITY_CLASS_OPTIONS: Array<{
+  value: ActivityClassChoice;
+  label: string;
+}> = [
+  { value: "auto", label: "Automático" },
+  { value: "casual", label: "Atividade Solta" },
+  { value: "serious", label: "Modalidade" },
+  { value: "complementary", label: "Suporte" },
+];
 
 export function QuickActivityLauncher({
   variant = "primary",
   compact = false,
+  hideTriggerOnMobile = false,
+  athleteProfile,
 }: {
   variant?: "primary" | "secondary";
   compact?: boolean;
+  hideTriggerOnMobile?: boolean;
+  athleteProfile?: {
+    primaryModality: CoreModalityCode;
+    complementaryModalities: CoreModalityCode[];
+  } | null;
 }) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
@@ -39,6 +64,8 @@ export function QuickActivityLauncher({
 
   const [modalityCode, setModalityCode] = useState<string>("running");
   const [title, setTitle] = useState("Corrida");
+  const [activityClassChoice, setActivityClassChoice] =
+    useState<ActivityClassChoice>("auto");
   const [durationMinutes, setDurationMinutes] = useState(45);
   const [rpe, setRpe] = useState(7);
   const [distanceKm, setDistanceKm] = useState("");
@@ -47,6 +74,24 @@ export function QuickActivityLauncher({
   );
   const [notes, setNotes] = useState("");
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+
+  useEffect(() => {
+    const handleOpen = () => setOpen(true);
+    window.addEventListener("selye:open-quick-activity", handleOpen);
+    return () => {
+      window.removeEventListener("selye:open-quick-activity", handleOpen);
+    };
+  }, []);
+
+  const effectiveProfile = athleteProfile
+    ? athleteProfile
+    : getDefaultAthleteProfileFallback();
+
+  const classificationPreview = classifyImportedOrFreeActivity({
+    activityModalityCode: modalityCode,
+    athleteProfile: effectiveProfile,
+    explicitClass: activityClassChoice,
+  });
 
   const modProfile = getModalityProfile(modalityCode);
   const previewLoadUa = calculateUnifiedSessionLoad({
@@ -77,7 +122,11 @@ export function QuickActivityLauncher({
     setErrorMsg(null);
     startTransition(async () => {
       if (mode === "live") {
-        await startFreeActivity({ title: cleanTitle, modalityCode });
+        await startFreeActivity({
+          title: cleanTitle,
+          modalityCode,
+          activityClass: activityClassChoice,
+        });
       } else {
         await logFreeActivity({
           title: cleanTitle,
@@ -87,11 +136,13 @@ export function QuickActivityLauncher({
           localDate,
           distanceKm: distanceKm ? Number(distanceKm) : null,
           notes,
+          activityClass: activityClassChoice,
         });
       }
       setOpen(false);
       setDistanceKm("");
       setNotes("");
+      setActivityClassChoice("auto");
       router.refresh();
     });
   };
@@ -102,11 +153,11 @@ export function QuickActivityLauncher({
         type="button"
         onClick={() => setOpen(true)}
         aria-label="Registrar atividade física"
-        className={
+        className={`${hideTriggerOnMobile ? "hidden sm:inline-flex" : "inline-flex"} ${
           variant === "primary"
-            ? "btn btn-primary h-9 px-2.5 sm:px-3 text-xs shrink-0 inline-flex items-center gap-1.5"
-            : "h-9 px-2.5 sm:px-3 rounded-lg border border-line bg-surface text-foreground hover:bg-foreground/5 text-xs font-mono font-medium transition-colors shrink-0 inline-flex items-center gap-1.5 cursor-pointer"
-        }
+            ? "btn btn-primary h-9 px-2.5 sm:px-3 text-xs shrink-0 items-center gap-1.5"
+            : "h-9 px-2.5 sm:px-3 rounded-lg border border-line bg-surface text-foreground hover:bg-foreground/5 text-xs font-mono font-medium transition-colors shrink-0 items-center gap-1.5 cursor-pointer"
+        }`}
       >
         <Plus size={14} strokeWidth={2.4} />
         <span className={compact ? "hidden sm:inline" : "inline"}>
@@ -226,6 +277,52 @@ export function QuickActivityLauncher({
               )}
             </div>
 
+            {/* Classificação: Modalidade Séria vs Suporte vs Atividade Solta (Fase 6) */}
+            <div className="flex flex-col gap-2">
+              <div className="flex items-center justify-between gap-2">
+                <span className="t-aux text-foreground font-semibold inline-flex items-center gap-1">
+                  <Sparkles size={12} className="text-accent-text" />
+                  <span>Papel no seu plano</span>
+                </span>
+                <span
+                  className={`px-2 py-0.5 rounded-full text-[10px] font-mono font-semibold ${
+                    classificationPreview.activityClass === "serious"
+                      ? "bg-lima text-grafite"
+                      : classificationPreview.activityClass === "complementary"
+                        ? "bg-profundo/20 text-foreground border border-profundo/40"
+                        : "bg-foreground/10 text-muted"
+                  }`}
+                >
+                  {classificationPreview.presentation.titlePt}
+                </span>
+              </div>
+
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5">
+                {ACTIVITY_CLASS_OPTIONS.map((opt) => {
+                  const active = activityClassChoice === opt.value;
+                  return (
+                    <button
+                      key={opt.value}
+                      type="button"
+                      onClick={() => setActivityClassChoice(opt.value)}
+                      aria-pressed={active}
+                      className={`h-8 px-2 rounded-lg border text-[11px] font-mono font-medium transition-colors cursor-pointer ${
+                        active
+                          ? "bg-foreground text-background border-foreground font-semibold"
+                          : "border-line bg-background text-muted hover:text-foreground"
+                      }`}
+                    >
+                      {opt.label}
+                    </button>
+                  );
+                })}
+              </div>
+
+              <p className="text-[11px] text-muted leading-snug rounded-lg border border-line/70 bg-background/70 px-3 py-2">
+                {classificationPreview.rationalePt}
+              </p>
+            </div>
+
             {/* Campos exclusivos do modo "Já concluí" */}
             {mode === "log" && (
               <>
@@ -342,12 +439,12 @@ export function QuickActivityLauncher({
                 <div className="rounded-xl border border-line bg-foreground/[0.03] px-3.5 py-2.5 flex items-center justify-between gap-3">
                   <div>
                     <span className="t-label block">
-                      Impacto na Energia Adaptativa (EA)
+                      Impacto na Energia do Corpo (EA)
                     </span>
                     <p className="text-xs text-muted">
                       {modalityCode === "walking" && rpe <= 4
-                        ? "Sessão Regenerativa · Recarrega sua reserva (+EA)"
-                        : `${modProfile.labelPt} · Fator ${modProfile.systemicFactor.toFixed(2)}×`}
+                        ? "Atividade leve · Ajuda a recarregar sua energia (+EA)"
+                        : `${modProfile.labelPt} · Peso no desgaste ${modProfile.systemicFactor.toFixed(2)}×`}
                     </p>
                   </div>
                   <div className="text-right">

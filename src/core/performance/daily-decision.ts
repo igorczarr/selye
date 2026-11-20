@@ -31,6 +31,12 @@ export interface DailyDecisionContext {
   recoveryBudgetRemainingUa: number;
   acwr: number;
   consecutiveTrainingDays: number;
+  /** Modalidade principal do atleta (ex: "Corrida", "Vôlei de Praia") */
+  modalityShortNamePt?: string | null;
+  /** Nome da meta/objetivo ativo no calendário (ex: "Meia Maratona 21 km") */
+  activeGoalTitle?: string | null;
+  /** Status atual da curva rumo à meta */
+  onTrackStatus?: "on_track" | "attention" | "off_track" | "awaiting_data" | null;
 }
 
 export interface DailyDecisionResult {
@@ -45,6 +51,8 @@ export interface DailyDecisionResult {
   whyExplanation: string;
   suggestedAction: string;
   autonomyNote: string;
+  /** Rótulo curto contextual da modalidade e meta (ex: "Corrida · Meia Maratona") */
+  modalityContextBadge?: string | null;
   factors: {
     label: string;
     valueText: string;
@@ -159,7 +167,7 @@ export function evaluateDailyDecision(
   });
 
   factors.push({
-    label: "Reserva Adaptativa",
+    label: "Bateria do Corpo",
     valueText: `${ctx.recoveryBudgetRemainingUa} EA livres (${100 - Math.min(100, ctx.recoveryBudgetUsagePercent)}%)`,
     impact:
       ctx.recoveryBudgetUsagePercent > 90
@@ -169,13 +177,26 @@ export function evaluateDailyDecision(
           : "neutral",
   });
 
-  // Determinação do Tier e Explicação Contextual Transparente
+  const modName = ctx.modalityShortNamePt?.trim() || null;
+  const goalTitle = ctx.activeGoalTitle?.trim() || null;
+  const modalityContextBadge = modName
+    ? goalTitle
+      ? `${modName} · ${goalTitle}`
+      : modName
+    : null;
+
+  // Determinação do Tier e Explicação Contextual Transparente e Amigável
   let tier: DecisionTier = "green_push";
-  let badgeLabel = "Sinal Verde · Treino Pleno";
-  let headline = "Corpo pronto para carga total ou potência";
+  let badgeLabel = "Sinal Verde · Dia de Avançar";
+  let headline = modName
+    ? `Corpo pronto para seu treino de ${modName}`
+    : "Corpo pronto para treinar com força total";
   let whyExplanation = "";
-  let suggestedAction =
-    "Execute a ficha prescrita do dia ou partida competitiva mantendo progressão normal de cargas.";
+  let suggestedAction = modName
+    ? goalTitle
+      ? `Siga o treino planejado de ${modName} hoje para manter sua evolução rumo a "${goalTitle}".`
+      : `Siga sua ficha ou sessão de ${modName} com progressão normal.`
+    : "Faça o treino planejado do dia mantendo sua evolução normal de carga ou ritmo.";
 
   const lowSleepOrMuscle =
     ctx.checkin &&
@@ -188,19 +209,21 @@ export function evaluateDailyDecision(
     ctx.recoveryBudgetUsagePercent > 110
   ) {
     tier = "red_recover";
-    badgeLabel = "Regeneração · Poupar Sistema";
-    headline = "Priorize recuperação ativa, mobilidade ou treino leve";
+    badgeLabel = "Dia Leve · Recuperar";
+    headline = modName
+      ? `Dia de recuperar o corpo para voltar mais forte em ${modName}`
+      : "Priorize descanso ativo, mobilidade ou treino bem leve";
 
     const reasons: string[] = [];
     if (ctx.checkin && clamp1to5(ctx.checkin.sleepQuality) <= 2) {
       reasons.push("seu sono relatado hoje foi curto ou pouco restaurador");
     }
     if (ctx.checkin && clamp1to5(ctx.checkin.muscleFreshness) <= 2) {
-      reasons.push("você sinalizou dor ou rigidez muscular acentuada");
+      reasons.push("você sinalizou dor ou cansaço muscular mais forte");
     }
     if (ctx.yesterdayLoadUa >= 400) {
       reasons.push(
-        `ontem houve alta demanda física (-${ctx.yesterdayLoadUa} EA${
+        `ontem o treino exigiu bastante do corpo (-${ctx.yesterdayLoadUa} EA${
           ctx.yesterdayLastModalityLabel
             ? ` em ${ctx.yesterdayLastModalityLabel}`
             : ""
@@ -209,17 +232,18 @@ export function evaluateDailyDecision(
     }
     if (ctx.recoveryBudgetUsagePercent > 100) {
       reasons.push(
-        `sua Reserva Adaptativa semanal atingiu ${ctx.recoveryBudgetUsagePercent}% de consumo líquido`
+        `sua bateria semanal chegou a ${ctx.recoveryBudgetUsagePercent}% de uso`
       );
     }
 
     whyExplanation =
       reasons.length > 0
-        ? `Por quê: ${reasons.join(" e ")}. Atitudes regenerativas hoje (+EA: sono, mobilidade, hidratação) aceleram a supercompensação.`
-        : "Por quê: a combinação entre carga acumulada recente e prontidão de hoje pede um dia regenerativo para recarregar sua Energia Adaptativa (+EA).";
+        ? `Por quê: ${reasons.join(" e ")}. Hábitos leves hoje (+EA: sono, mobilidade, água) ajudam seu corpo a absorver o treino e evoluir.`
+        : "Por quê: o cansaço acumulado nos últimos dias pede um treino leve ou descanso ativo para recarregar sua energia (+EA).";
 
-    suggestedAction =
-      "Substitua séries até a falha por 20–30 min de mobilidade (+75 EA), caminhada leve (+60 EA) ou reduza o volume da ficha em ~30%.";
+    suggestedAction = modName
+      ? `Troque o treino pesado de ${modName} por 20–30 min de mobilidade (+75 EA), caminhada leve (+60 EA) ou reduza cerca de 30% do volume hoje.`
+      : "Troque séries até o limite por 20–30 min de mobilidade (+75 EA), caminhada leve (+60 EA) ou reduza cerca de 30% do volume hoje.";
   } else if (
     readinessScore < 74 ||
     lowSleepOrMuscle ||
@@ -227,8 +251,10 @@ export function evaluateDailyDecision(
     ctx.recoveryBudgetUsagePercent >= 85
   ) {
     tier = "yellow_modulate";
-    badgeLabel = "Ritmo Controlado · Dosar Volume";
-    headline = "Treine com foco técnico e margem de reserva (RIR 2)";
+    badgeLabel = "Ritmo Controlado · Dosar";
+    headline = modName
+      ? `Treine ${modName} com foco na técnica, sem ir ao limite`
+      : "Treine com foco na técnica e sem ir até a exaustão";
 
     const reasons: string[] = [];
     if (ctx.yesterdayLoadUa >= 350) {
@@ -241,36 +267,41 @@ export function evaluateDailyDecision(
       );
     }
     if (ctx.checkin && subjectiveScore !== null && subjectiveScore < 75) {
-      reasons.push(`seu check-in matinal indicou prontidão moderada (${subjectiveScore}/100)`);
+      reasons.push(`seu check-in matinal mostrou disposição moderada (${subjectiveScore}/100)`);
     }
     if (ctx.recoveryBudgetUsagePercent >= 85) {
       reasons.push(
-        `sua reserva líquida atual é de ${ctx.recoveryBudgetRemainingUa} EA`
+        `você ainda tem ${ctx.recoveryBudgetRemainingUa} EA livres na semana`
       );
     }
 
     whyExplanation =
       reasons.length > 0
-        ? `Por quê: ${reasons.join(" e ")}. Manter qualidade técnica e registrar hábitos regenerativos (+EA) preserva sua evolução semanal.`
-        : "Por quê: sua Reserva Adaptativa está em faixa intermediária; manter RPE 7–8 garante estímulo eficiente sem sobrecarga.";
+        ? `Por quê: ${reasons.join(" e ")}. Manter boa técnica e hábitos de recuperação (+EA) protege sua evolução na semana.`
+        : "Por quê: sua energia está em faixa moderada; treinar em esforço controlado (7–8 de 10) gera resultado sem sobrecarregar.";
 
-    suggestedAction =
-      "Mantenha a sessão planejada encerrando cada série com 1 a 2 repetições em reserva (RPE 7–8) e recarregue +EA com hidratação e sono.";
+    suggestedAction = modName
+      ? `Faça sua sessão de ${modName} terminando com folga (esforço 7–8 de 10, sem ir até a falha) e recarregue com água e bom sono.`
+      : "Mantenha o treino de hoje terminando cada série com 1 a 2 repetições de folga (esforço 7–8 de 10) e capriche na hidratação e no sono.";
   } else {
     const reasons: string[] = [];
     if (ctx.checkin && subjectiveScore !== null) {
       reasons.push(
-        `seu check-in matinal apontou ótima recuperação (${subjectiveScore}/100)`
+        `seu check-in matinal apontou ótima disposição (${subjectiveScore}/100)`
       );
     }
     if (ctx.yesterdayLoadUa === 0) {
-      reasons.push("você vem de um dia de supercompensação (+EA)");
+      reasons.push("você vem de um dia de descanso e recarga (+EA)");
     }
     reasons.push(
-      `seu perfil dispõe de ${ctx.recoveryBudgetRemainingUa} EA de Reserva Adaptativa livre`
+      `você tem ${ctx.recoveryBudgetRemainingUa} EA livres na sua bateria semanal`
     );
 
-    whyExplanation = `Por quê: ${reasons.join(" e ")}. Excelente janela fisiológica para estímulos de força, potência ou jogo intenso.`;
+    const goalTail = goalTitle
+      ? ` Bom momento para avançar rumo a "${goalTitle}".`
+      : " Ótimo momento para treinos de força, velocidade ou intensidade.";
+
+    whyExplanation = `Por quê: ${reasons.join(" e ")}.${goalTail}`;
   }
 
   return {
@@ -282,8 +313,9 @@ export function evaluateDailyDecision(
     headline,
     whyExplanation,
     suggestedAction,
+    modalityContextBadge,
     autonomyNote:
-      "Autonomia Selye: esta é uma recomendação baseada nos seus dados. Você decide se mantém a ficha completa, adapta o volume ou registra outra modalidade.",
+      "Autonomia Selye: esta é uma sugestão baseada nos seus dados. Você decide se mantém o treino completo, reduz o ritmo ou faz outra atividade.",
     factors,
   };
 }

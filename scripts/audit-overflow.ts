@@ -18,8 +18,10 @@ const VIEWPORTS = [
 
 const ROUTES = [
   "/",
+  "/onboarding",
   "/treinos",
   "/treinos/novo",
+  "/calendario",
   "/evolucao",
   "/comunidade",
   "/comunidade/tag/treino",

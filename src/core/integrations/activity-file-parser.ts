@@ -90,10 +90,22 @@ export function normalizeExternalSportType(rawType?: string | null): {
       defaultTitlePt: "Vôlei de Praia",
     };
   }
-  if (/\b(futsal|soccer|football|futebol)\b/.test(norm)) {
-    return { modalityCode: "futsal", defaultTitlePt: "Futsal / Futebol" };
+  if (/\b(futsal)\b/.test(norm)) {
+    return { modalityCode: "futsal", defaultTitlePt: "Futsal" };
   }
-  if (/\b(weight|strength|musculacao|gym|workout|crossfit)\b/.test(norm)) {
+  if (/\b(soccer|football|futebol)\b/.test(norm)) {
+    return { modalityCode: "football", defaultTitlePt: "Futebol" };
+  }
+  if (/\b(martial_arts|bjj|jiu_jitsu|jiu-jitsu|muay_thai|boxing|boxe|mma|judo|wrestling|lutas|karate)\b/.test(norm)) {
+    return { modalityCode: "martial_arts", defaultTitlePt: "Lutas / Artes Marciais" };
+  }
+  if (/\b(calisthenics|calistenia|street_workout|bodyweight)\b/.test(norm)) {
+    return { modalityCode: "calisthenics", defaultTitlePt: "Calistenia" };
+  }
+  if (/\b(functional|funcional|crossfit|hyrox|hiit)\b/.test(norm)) {
+    return { modalityCode: "functional", defaultTitlePt: "Funcional" };
+  }
+  if (/\b(weight|strength|musculacao|gym|workout)\b/.test(norm)) {
     return { modalityCode: "strength", defaultTitlePt: "Treino de Força" };
   }
 

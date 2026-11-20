@@ -149,8 +149,10 @@ export interface HistoricalCheckinSample {
   moodLevel: number; // 1..5
 }
 
+import type { EaOnboardingCalibrationResult } from "./ea-onboarding-calibrator";
+
 export interface AthleteMLInput {
-  experienceLevel?: "beginner" | "intermediate" | "advanced" | string | null;
+  experienceLevel?: "beginner" | "intermediate" | "advanced" | "competitive" | string | null;
   targetDaysPerWeek: number;
   currentWeeklyStreak: number;
   restingHrBpm?: number | null;
@@ -158,6 +160,8 @@ export interface AthleteMLInput {
   checkinsLast28Days: HistoricalCheckinSample[];
   recoveryAttitudesLast7Days: LoggedRecoveryAttitude[];
   todayDateStr: string;
+  /** Calibração científica de onboarding (§Fase 2) — substitui o cold-start heurístico */
+  eaCalibration?: EaOnboardingCalibrationResult | null;
 }
 
 export interface LearnedAthleteTrait {
@@ -228,27 +232,38 @@ export function learnAdaptiveAthleteProfile(
 ): AdaptiveAthleteMLProfile {
   const safeTargetDays = clamp(input.targetDaysPerWeek || 4, 2, 7);
 
-  // 1. Prior Bayesiano da Capacidade Base conforme Nível de Experiência e Consistência
-  const exp = (input.experienceLevel || "intermediate").toLowerCase();
-  const basePerDayPrior =
-    exp === "advanced" || exp === "expert"
-      ? 430
-      : exp === "beginner"
-        ? 300
-        : 370;
+  // 1. Prior Bayesiano da Capacidade Base
+  // Quando existe Calibração Científica de Onboarding (§Fase 2), usamos o prior calibrado
+  // por base crônica, sono, carga alostática e biometria em vez da heurística fixa.
+  const calib = input.eaCalibration || null;
+  let priorCapacityEa: number;
 
-  let priorCapacityEa = safeTargetDays * basePerDayPrior;
+  if (calib && calib.calibratedCapacityEa > 0) {
+    priorCapacityEa = calib.calibratedCapacityEa;
+    const streakBonusRatio = Math.min(0.12, (input.currentWeeklyStreak || 0) * 0.015);
+    priorCapacityEa *= 1 + streakBonusRatio;
+  } else {
+    const exp = (input.experienceLevel || "intermediate").toLowerCase();
+    const basePerDayPrior =
+      exp === "advanced" || exp === "expert" || exp === "competitive"
+        ? 430
+        : exp === "beginner"
+          ? 300
+          : 370;
 
-  // Ajuste por consistência histórica (Streak Semanal consolida mitocôndrias e tolerância a carga)
-  const streakBonusRatio = Math.min(0.18, (input.currentWeeklyStreak || 0) * 0.02);
-  priorCapacityEa *= 1 + streakBonusRatio;
+    priorCapacityEa = safeTargetDays * basePerDayPrior;
 
-  // Ajuste por condicionamento cardiovascular (FC de repouso se informada)
-  if (input.restingHrBpm && input.restingHrBpm > 35 && input.restingHrBpm < 95) {
-    if (input.restingHrBpm <= 56) {
-      priorCapacityEa *= 1.08;
-    } else if (input.restingHrBpm >= 76) {
-      priorCapacityEa *= 0.94;
+    // Ajuste por consistência histórica (Streak Semanal consolida mitocôndrias e tolerância a carga)
+    const streakBonusRatio = Math.min(0.18, (input.currentWeeklyStreak || 0) * 0.02);
+    priorCapacityEa *= 1 + streakBonusRatio;
+
+    // Ajuste por condicionamento cardiovascular (FC de repouso se informada)
+    if (input.restingHrBpm && input.restingHrBpm > 35 && input.restingHrBpm < 95) {
+      if (input.restingHrBpm <= 56) {
+        priorCapacityEa *= 1.08;
+      } else if (input.restingHrBpm >= 76) {
+        priorCapacityEa *= 0.94;
+      }
     }
   }
 
@@ -274,12 +289,15 @@ export function learnAdaptiveAthleteProfile(
       Math.round((1 - adaptationDiscount) * 100) / 100;
   }
 
-  // Regressão Regularizada (L2 Prior λ = 3.0 centrada em α = 1.00, β = 1.00)
+  // Regressão Regularizada (L2 Prior λ = 3.0 centrada no prior científico α_0, β_0)
   const lambda = 3.0;
-  let weightedAlphaNum = lambda * 1.0;
+  const alphaPrior = calib?.recoveryVelocityPrior ?? 1.0;
+  const betaPrior = calib?.recoveryGainPrior ?? 1.0;
+
+  let weightedAlphaNum = lambda * alphaPrior;
   let weightedAlphaDen = lambda;
 
-  let weightedBetaNum = lambda * 1.0;
+  let weightedBetaNum = lambda * betaPrior;
   let weightedBetaDen = lambda;
 
   const checkinsSorted = [...input.checkinsLast28Days].sort((a, b) =>
@@ -348,13 +366,21 @@ export function learnAdaptiveAthleteProfile(
   const chronicWeeklyAvgEa = total28RawEa / 4;
 
   // Fusão Bayesiana: combina o prior do perfil com a média crônica real escalada por α_u
-  const chronicWeight = clamp(input.sessionsLast28Days.length / 12, 0.15, 0.75);
+  const chronicWeight =
+    input.sessionsLast28Days.length === 0
+      ? 0
+      : clamp(input.sessionsLast28Days.length / 12, 0.15, 0.75);
   const blendedBaseCapacity =
     priorCapacityEa * (1 - chronicWeight) +
     Math.max(priorCapacityEa * 0.8, chronicWeeklyAvgEa * 1.15) * chronicWeight;
 
+  // Quando calibratedCapacityEa já embutiu o prior α_0, aplicamos apenas a razão incremental α_u / α_0
+  const effectiveAlphaScale = calib
+    ? recoveryVelocityMultiplier / Math.max(0.7, alphaPrior)
+    : recoveryVelocityMultiplier;
+
   const personalCapacityEa = Math.round(
-    clamp(blendedBaseCapacity * recoveryVelocityMultiplier, 850, 3800)
+    clamp(blendedBaseCapacity * effectiveAlphaScale, 650, 3800)
   );
 
   // 4. Balanço Bidirecional dos Últimos 7 Dias (-EA de Treino/Estresse vs. +EA de Regeneração)
@@ -482,8 +508,10 @@ export function learnAdaptiveAthleteProfile(
     input.checkinsLast28Days.length * 2 +
     input.recoveryAttitudesLast7Days.length;
 
+  const baseConfidence = calib?.initialConfidencePercent ?? 32;
+  const confidenceGainPerObs = calib ? 1.8 : 3.8;
   const modelConfidencePercent = Math.round(
-    clamp(32 + observationsCount * 3.8, 32, 98)
+    clamp(baseConfidence + observationsCount * confidenceGainPerObs, 32, 98)
   );
 
   const learningStageLabel =
@@ -491,7 +519,9 @@ export function learnAdaptiveAthleteProfile(
       ? "Perfil Biológico Consolidado"
       : observationsCount >= 5
         ? "Ritmo Individual Calibrado"
-        : "Conhecendo seu Ritmo";
+        : calib
+          ? "Calibrado via Onboarding Científico"
+          : "Conhecendo seu Ritmo";
 
   const learnedTraits: LearnedAthleteTrait[] = [];
 
