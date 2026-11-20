@@ -165,6 +165,7 @@ export function DailyDecisionCard({
   const [expandedAttitude, setExpandedAttitude] =
     useState<RecoveryAttitudeCode | null>("mobility_session");
   const [dismissedOverride, setDismissedOverride] = useState(false);
+  const [showMobileDetails, setShowMobileDetails] = useState(false);
   const [isPending, startTransition] = useTransition();
 
   const [form, setForm] = useState<MorningCheckinInput>({
@@ -290,7 +291,11 @@ export function DailyDecisionCard({
                   ? "Autonomia Ativa: você escolheu seguir seu plano original hoje"
                   : decision.headline}
               </h2>
-              <p className="text-xs sm:text-[13px] text-muted mt-1.5 leading-relaxed">
+              <p
+                className={`text-xs sm:text-[13px] text-muted mt-1.5 leading-relaxed ${
+                  showMobileDetails ? "block" : "hidden lg:block"
+                }`}
+              >
                 {decision.whyExplanation}
               </p>
             </div>
@@ -314,9 +319,13 @@ export function DailyDecisionCard({
             </div>
           </div>
 
-          {/* ZONA 3 (4 colunas): Grade 2×2 de Sinais do Corpo + Ações Diretas */}
-          <div className="lg:col-span-4 flex flex-col justify-between gap-3.5 lg:border-l lg:border-line lg:pl-5">
-            <div className="grid grid-cols-2 gap-2.5">
+          {/* ZONA 3 (4 colunas): Ações Diretas + Grade 2×2 de Sinais do Corpo (recolhível no mobile) */}
+          <div className="lg:col-span-4 flex flex-col justify-between gap-3 lg:border-l lg:border-line lg:pl-5">
+            <div
+              className={`grid-cols-2 gap-2.5 ${
+                showMobileDetails ? "grid" : "hidden lg:grid"
+              }`}
+            >
               {decision.factors.slice(0, 4).map((f) => (
                 <div
                   key={f.label}
@@ -339,6 +348,23 @@ export function DailyDecisionCard({
                 </div>
               ))}
             </div>
+
+            <button
+              type="button"
+              onClick={() => setShowMobileDetails((v) => !v)}
+              className="lg:hidden h-8 px-3 rounded-lg border border-line bg-foreground/[0.02] text-[11px] font-mono text-muted hover:text-foreground flex items-center justify-between cursor-pointer"
+            >
+              <span>
+                {showMobileDetails
+                  ? "Ocultar detalhes e sinais do dia"
+                  : "Ver por quê e 4 sinais do corpo"}
+              </span>
+              {showMobileDetails ? (
+                <ChevronUp size={13} />
+              ) : (
+                <ChevronDown size={13} />
+              )}
+            </button>
 
             <div className="grid grid-cols-2 gap-2">
               <button

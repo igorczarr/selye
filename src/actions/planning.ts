@@ -15,6 +15,7 @@ import {
   type PlanningGoalMode,
 } from "@/core/planning/energetic-cycle-planner";
 import {
+  computeCycleBuiltEa,
   reconcileEnergeticPlanProgress,
   type EnergeticPlanLiveProgress,
   type StoredCalendarCommitmentInput,
@@ -314,16 +315,43 @@ export async function getActivePlanningSnapshot(): Promise<ActivePlanningSnapsho
 
   const completedKeys = relevantCheckins.map((c) => c.commitmentKey);
 
-  // Calcula bônus real de hábitos de recarga concluídos no checklist do plano
-  const planRechargeHabitBonusEa = relevantCheckins
-    .filter((c) => c.kind === "recharge_habit" && c.eaSignedDelta > 0)
-    .reduce((acc, c) => acc + Math.min(140, c.eaSignedDelta), 0);
-
-  const baseCurrentEa = Math.max(
+  // A EA Base do Calendário é ancorada na Capacidade Pessoal do atleta (ex: 1700 EA),
+  // NUNCA na bateria instantânea pós-treino (availableReserveEa), para que treinar não derrube a meta de 1900 para 1500.
+  const baseCapacityEa = Math.max(
     400,
-    Math.round(adaptive.availableReserveEa || adaptive.personalCapacityEa || 1455)
+    Math.round(adaptive.personalCapacityEa || 1700)
   );
-  const realCurrentEa = baseCurrentEa + Math.round(planRechargeHabitBonusEa * 0.35);
+
+  const cycleStartStr = activeGoal ? activeGoal.startDate : todayDateStr;
+  const completedWorkoutsInCycle =
+    relevantCheckins.filter((c) => c.kind === "workout").length +
+    (dashboard.recentSessions || []).filter(
+      (s: any) =>
+        new Date(s.finishedAt || s.startedAt).toISOString().split("T")[0] >=
+        cycleStartStr
+    ).length;
+  const completedRechargeHabitsInCycle =
+    relevantCheckins.filter((c) => c.kind === "recharge_habit").length +
+    (dashboard.performanceSummary.todayCheckin ? 1 : 0);
+
+  const effectiveGoalInitialEa = activeGoal
+    ? Math.max(activeGoal.initialEa, baseCapacityEa)
+    : baseCapacityEa;
+  const effectiveGoalTargetEa = activeGoal
+    ? Math.max(
+        activeGoal.targetEa,
+        effectiveGoalInitialEa +
+          Math.max(150, activeGoal.targetEa - activeGoal.initialEa)
+      )
+    : Math.round(baseCapacityEa * 1.12);
+
+  const realCurrentEa = computeCycleBuiltEa({
+    initialEa: effectiveGoalInitialEa,
+    personalCapacityEa: baseCapacityEa,
+    targetEa: effectiveGoalTargetEa,
+    completedWorkoutsInCycle,
+    completedRechargeHabitsInCycle,
+  });
   const strengthRecordsCount = Math.min(12, Math.floor(prRows.length / 3));
 
   const plan = activeGoal
@@ -338,8 +366,8 @@ export async function getActivePlanningSnapshot(): Promise<ActivePlanningSnapsho
         targetKpiValue: activeGoal.targetKpiValue,
         kpiUnit: activeGoal.kpiUnit,
         userRoutines: linkedRoutines,
-        currentEa: activeGoal.initialEa,
-        targetEa: activeGoal.targetEa,
+        currentEa: effectiveGoalInitialEa,
+        targetEa: effectiveGoalTargetEa,
         startDateStr: activeGoal.startDate,
         targetDateStr: activeGoal.targetDate,
         targetDaysPerWeek: activeGoal.targetDaysPerWeek,
@@ -359,8 +387,8 @@ export async function getActivePlanningSnapshot(): Promise<ActivePlanningSnapsho
         targetKpiValue: primarySportRow?.targetKpiValue ?? null,
         kpiUnit: primarySportRow?.targetKpiUnit ?? null,
         userRoutines: linkedRoutines,
-        currentEa: baseCurrentEa,
-        targetEa: Math.round(baseCurrentEa * 1.15),
+        currentEa: baseCapacityEa,
+        targetEa: effectiveGoalTargetEa,
         startDateStr: todayDateStr,
         targetDateStr: addDaysUtc(todayDateStr, 28),
         targetDaysPerWeek: dashboard.stats.targetDaysPerWeek || 4,
@@ -373,7 +401,7 @@ export async function getActivePlanningSnapshot(): Promise<ActivePlanningSnapsho
 
   const progress = reconcileEnergeticPlanProgress({
     plan,
-    currentRealEa: activeGoal ? realCurrentEa : baseCurrentEa,
+    currentRealEa: realCurrentEa,
     todayDateStr,
     completedCommitmentKeys: completedKeys,
     customCommitments: commitments,
@@ -400,7 +428,7 @@ export async function getActivePlanningSnapshot(): Promise<ActivePlanningSnapsho
     athletePrimaryModality,
     athleteComplementaryModality,
     athleteExperienceLevel,
-    realCurrentEa: activeGoal ? realCurrentEa : baseCurrentEa,
+    realCurrentEa,
     personalCapacityEa: adaptive.personalCapacityEa,
     strengthRecordsCount,
     monthlyVolumeKg: dashboard.stats.monthlyVolumeKg,
@@ -431,9 +459,8 @@ export async function savePlanningGoal(input: SavePlanningGoalInput) {
     400,
     Math.round(
       input.initialEa ??
-        adaptive.availableReserveEa ??
         adaptive.personalCapacityEa ??
-        1455
+        1700
     )
   );
   const requestedTargetEa = Math.max(

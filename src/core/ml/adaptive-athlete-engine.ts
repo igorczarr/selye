@@ -161,7 +161,13 @@ export interface AthleteMLInput {
   recoveryAttitudesLast7Days: LoggedRecoveryAttitude[];
   todayDateStr: string;
   /** Calibração científica de onboarding (§Fase 2) — substitui o cold-start heurístico */
-  eaCalibration?: EaOnboardingCalibrationResult | null;
+  eaCalibration?: Pick<
+    EaOnboardingCalibrationResult,
+    | "calibratedCapacityEa"
+    | "recoveryVelocityPrior"
+    | "recoveryGainPrior"
+    | "initialConfidencePercent"
+  > | null;
 }
 
 export interface LearnedAthleteTrait {
@@ -313,10 +319,10 @@ export function learnAdaptiveAthleteProfile(
     const prevDateStr = prevDateObj.toISOString().split("T")[0];
     const prevLoad = dailyRawLoad28.get(prevDateStr) || 0;
 
-    // Resposta muscular e energética observada (normalizada em torno de 3.5/5)
+    // Resposta muscular e energética observada (normalizada em torno de 3.4/5)
     const observedFreshness = (chk.muscleFreshness * 0.55 + chk.energyLevel * 0.45) / 5;
-    // Expectativa padrão dado o esforço de ontem
-    const expectedFreshness = clamp(0.84 - prevLoad / 1800, 0.35, 0.92);
+    // Expectativa realista matinal dado o esforço de ontem (evita penalizar check-ins normais)
+    const expectedFreshness = clamp(0.68 - prevLoad / 1800, 0.35, 0.85);
     const residual = observedFreshness - expectedFreshness;
 
     // Atualiza α_u (Velocidade de Regeneração Individual)
@@ -365,19 +371,21 @@ export function learnAdaptiveAthleteProfile(
   );
   const chronicWeeklyAvgEa = total28RawEa / 4;
 
-  // Fusão Bayesiana: combina o prior do perfil com a média crônica real escalada por α_u
+  // Fusão Bayesiana: a capacidade base calibrada do atleta (ex: 1700 EA) é protegida como piso estrutural;
+  // o volume crônico ou a velocidade de recuperação só podem expandir a capacidade base, nunca encolhê-la ao fazer check-in ou treinar.
   const chronicWeight =
     input.sessionsLast28Days.length === 0
       ? 0
-      : clamp(input.sessionsLast28Days.length / 12, 0.15, 0.75);
+      : clamp(input.sessionsLast28Days.length / 12, 0.15, 0.65);
   const blendedBaseCapacity =
     priorCapacityEa * (1 - chronicWeight) +
-    Math.max(priorCapacityEa * 0.8, chronicWeeklyAvgEa * 1.15) * chronicWeight;
+    Math.max(priorCapacityEa, chronicWeeklyAvgEa * 1.15) * chronicWeight;
 
-  // Quando calibratedCapacityEa já embutiu o prior α_0, aplicamos apenas a razão incremental α_u / α_0
-  const effectiveAlphaScale = calib
+  // Garante que o check-in matinal nunca encolha a capacidade base (personalCapacityEa) abaixo do prior calibrado
+  const rawAlphaScale = calib
     ? recoveryVelocityMultiplier / Math.max(0.7, alphaPrior)
     : recoveryVelocityMultiplier;
+  const effectiveAlphaScale = Math.max(1.0, rawAlphaScale);
 
   const personalCapacityEa = Math.round(
     clamp(blendedBaseCapacity * effectiveAlphaScale, 650, 3800)
@@ -425,33 +433,38 @@ export function learnAdaptiveAthleteProfile(
     }
   }
 
-  // Impacto bidirecional do Check-in Matinal nos últimos 7 dias (Sono Restaurador +EA vs Privação -EA)
+  // Impacto do Check-in Matinal nos últimos 7 dias: dormir e acordar sempre representa recuperação noturna (+EA),
+  // nunca um dreno que reduz a EA do usuário ao preencher o check-in pela manhã.
   for (const chk of checkinsSorted) {
     if (daysBetween(chk.localDate, input.todayDateStr) < 7) {
-      if (chk.sleepQuality >= 4) {
+      const baseOvernightGain =
+        chk.sleepQuality >= 5
+          ? 105
+          : chk.sleepQuality === 4
+            ? 75
+            : chk.sleepQuality === 3
+              ? 50
+              : chk.sleepQuality === 2
+                ? 25
+                : 0;
+      if (baseOvernightGain > 0) {
         const sleepBonus = Math.round(
-          (chk.sleepQuality === 5 ? 95 : 60) * recoveryGainMultiplier
+          baseOvernightGain * recoveryGainMultiplier
         );
         recoveryRechargeEa += sleepBonus;
         ledgerEntries.push({
           id: `sleep_plus_${chk.localDate}`,
           labelPt:
-            chk.sleepQuality === 5
+            chk.sleepQuality >= 5
               ? "Sono Profundo Restaurador (Check-in)"
-              : "Sono Reparador (Check-in)",
+              : chk.sleepQuality === 4
+                ? "Sono Reparador (Check-in)"
+                : chk.sleepQuality === 3
+                  ? "Recuperação Noturna (Check-in)"
+                  : "Recuperação Noturna Parcial (Check-in)",
           date: chk.localDate,
           deltaEa: sleepBonus,
           category: "sleep_recharge",
-        });
-      } else if (chk.sleepQuality <= 2) {
-        const sleepDrain = chk.sleepQuality === 1 ? 70 : 45;
-        trainingDrainEa += sleepDrain;
-        ledgerEntries.push({
-          id: `sleep_minus_${chk.localDate}`,
-          labelPt: "Dreno por Privação de Sono",
-          date: chk.localDate,
-          deltaEa: -sleepDrain,
-          category: "stress_drain",
         });
       }
     }

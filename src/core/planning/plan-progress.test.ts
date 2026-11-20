@@ -1,7 +1,10 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { planEnergeticGrowthCurve } from "./energetic-cycle-planner";
-import { reconcileEnergeticPlanProgress } from "./plan-progress";
+import {
+  computeCycleBuiltEa,
+  reconcileEnergeticPlanProgress,
+} from "./plan-progress";
 
 describe("Phase 18 - Energetic Plan Live Progress & Daily Checklist Reconciliation", () => {
   it("Calcula progresso real rumo aos 1800 EA, adesão diária e distância restante até a competição", () => {
@@ -68,5 +71,28 @@ describe("Phase 18 - Energetic Plan Live Progress & Daily Checklist Reconciliati
     assert.equal(progress.trajectoryStatus, "needs_recharge");
     assert.ok(progress.trajectoryBadgePt.includes("+EA"));
     assert.ok(progress.deltaVsExpectedToday <= -55);
+  });
+
+  it("Garante que a EA do Ciclo parte da EA Base (1700) rumo à meta (1900) e sobe ao treinar, sem cair para 1500", () => {
+    const startCycleEa = computeCycleBuiltEa({
+      initialEa: 1700,
+      personalCapacityEa: 1700,
+      targetEa: 1900,
+      completedWorkoutsInCycle: 0,
+      completedRechargeHabitsInCycle: 0,
+    });
+    assert.equal(startCycleEa, 1700);
+
+    const afterWorkoutsAndCheckin = computeCycleBuiltEa({
+      initialEa: 1700,
+      personalCapacityEa: 1700,
+      targetEa: 1900,
+      completedWorkoutsInCycle: 2,
+      completedRechargeHabitsInCycle: 2,
+    });
+    assert.ok(
+      afterWorkoutsAndCheckin > 1700,
+      `Concluir treinos e hábitos deve elevar o progresso rumo a 1900 EA (${afterWorkoutsAndCheckin} EA)`
+    );
   });
 });

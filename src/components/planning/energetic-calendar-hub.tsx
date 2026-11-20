@@ -156,14 +156,21 @@ export function EnergeticCalendarHub({
   const [goalTargetDate, setGoalTargetDate] = useState(
     activeGoal?.targetDate || addDaysStr(snapshot.todayDateStr, 28)
   );
+  const baseAnchorEa = Math.max(
+    snapshot.personalCapacityEa || 1700,
+    snapshot.realCurrentEa || 1700
+  );
   const [goalTargetEa, setGoalTargetEa] = useState<number>(
     activeGoal?.targetEa ||
-      Math.max(snapshot.realCurrentEa + 345, Math.round(snapshot.realCurrentEa * 1.24))
+      Math.max(baseAnchorEa + 200, Math.round(baseAnchorEa * 1.12))
   );
   const [goalWorkoutDays, setGoalWorkoutDays] = useState<number[]>(
     activeGoal?.preferredWorkoutDays || [1, 2, 4, 6]
   );
   const [goalNotes, setGoalNotes] = useState(activeGoal?.notes || "");
+  const [mobileSectionTab, setMobileSectionTab] = useState<
+    "agenda" | "blueprint" | "curve"
+  >("agenda");
 
   // Modal 2: Adicionar Compromisso Pessoal ou Bloqueio
   const [commitModalOpen, setCommitModalOpen] = useState(false);
@@ -211,7 +218,7 @@ export function EnergeticCalendarHub({
           : null,
       kpiUnit: selectedGoalPrimaryKpi.unit,
       userRoutines: snapshot.linkedRoutines,
-      currentEa: snapshot.realCurrentEa,
+      currentEa: baseAnchorEa,
       targetEa: goalTargetEa,
       startDateStr: snapshot.todayDateStr,
       targetDateStr: goalTargetDate,
@@ -550,27 +557,33 @@ export function EnergeticCalendarHub({
             <div className="grid grid-cols-3 gap-3">
               <div>
                 <span className="text-[10px] font-mono uppercase tracking-wider text-nevoa block">
-                  Seu EA Hoje
+                  EA Base → Atual
                 </span>
-                <p className="t-data text-2xl font-bold text-lima mt-0.5">
+                <p className="t-data text-xl sm:text-2xl font-bold text-lima mt-0.5">
                   {progress.currentRealEa}
                   <span className="text-xs font-normal text-nevoa ml-1">EA</span>
                 </p>
+                <span className="text-[10px] font-mono text-nevoa/80 block">
+                  Base: {snapshot.personalCapacityEa} EA
+                </span>
               </div>
               <div>
                 <span className="text-[10px] font-mono uppercase tracking-wider text-nevoa block">
-                  Meta no Dia-Alvo
+                  Meta Planejada
                 </span>
-                <p className="t-data text-2xl font-bold text-osso mt-0.5">
+                <p className="t-data text-xl sm:text-2xl font-bold text-osso mt-0.5">
                   {plan.projectedPeakEa}
                   <span className="text-xs font-normal text-nevoa ml-1">EA</span>
                 </p>
+                <span className="text-[10px] font-mono text-nevoa/80 block">
+                  Meta fixa do ciclo
+                </span>
               </div>
               <div>
                 <span className="text-[10px] font-mono uppercase tracking-wider text-nevoa block">
                   Falta Construir
                 </span>
-                <p className="t-data text-2xl font-bold text-emerald-400 mt-0.5">
+                <p className="t-data text-xl sm:text-2xl font-bold text-emerald-400 mt-0.5">
                   {progress.remainingEaToTarget > 0
                     ? `+${progress.remainingEaToTarget}`
                     : "Atingido"}
@@ -578,6 +591,9 @@ export function EnergeticCalendarHub({
                     <span className="text-xs font-normal text-nevoa ml-1">EA</span>
                   )}
                 </p>
+                <span className="text-[10px] font-mono text-nevoa/80 block">
+                  Adesão: {progress.adherencePercent}%
+                </span>
               </div>
             </div>
 
@@ -641,8 +657,12 @@ export function EnergeticCalendarHub({
           </div>
         </section>
 
-        {/* Direita (5 cols): Gráfico SVG da Curva Previsível de EA */}
-        <section className="col-span-12 xl:col-span-5 card p-5 sm:p-6 flex flex-col justify-between gap-4">
+        {/* Direita (5 cols): Gráfico SVG da Curva Previsível de EA (no mobile aparece na aba 'Curva & Fases') */}
+        <section
+          className={`col-span-12 xl:col-span-5 card p-5 sm:p-6 flex-col justify-between gap-4 ${
+            mobileSectionTab === "curve" ? "flex" : "hidden xl:flex"
+          }`}
+        >
           <div className="flex items-start justify-between gap-2">
             <div>
               <span className="t-label !text-accent-text">
@@ -784,8 +804,59 @@ export function EnergeticCalendarHub({
         </section>
       </div>
 
+      {/* Filtro Rápido de Visão no Mobile/Tablet (evita excesso de informação empilhada) */}
+      <div
+        role="tablist"
+        aria-label="Organizar visão do calendário"
+        className="xl:hidden grid grid-cols-3 gap-1 p-1 rounded-xl border border-line bg-surface"
+      >
+        <button
+          type="button"
+          role="tab"
+          aria-selected={mobileSectionTab === "agenda"}
+          onClick={() => setMobileSectionTab("agenda")}
+          className={`h-9 rounded-lg text-xs font-mono font-semibold transition-colors cursor-pointer ${
+            mobileSectionTab === "agenda"
+              ? "bg-lima text-grafite"
+              : "text-muted hover:text-foreground"
+          }`}
+        >
+          Agenda & Dia
+        </button>
+        <button
+          type="button"
+          role="tab"
+          aria-selected={mobileSectionTab === "blueprint"}
+          onClick={() => setMobileSectionTab("blueprint")}
+          className={`h-9 rounded-lg text-xs font-mono font-semibold transition-colors cursor-pointer ${
+            mobileSectionTab === "blueprint"
+              ? "bg-lima text-grafite"
+              : "text-muted hover:text-foreground"
+          }`}
+        >
+          Plano Semanal
+        </button>
+        <button
+          type="button"
+          role="tab"
+          aria-selected={mobileSectionTab === "curve"}
+          onClick={() => setMobileSectionTab("curve")}
+          className={`h-9 rounded-lg text-xs font-mono font-semibold transition-colors cursor-pointer ${
+            mobileSectionTab === "curve"
+              ? "bg-lima text-grafite"
+              : "text-muted hover:text-foreground"
+          }`}
+        >
+          Curva & Fases
+        </button>
+      </div>
+
       {/* ================= SEÇÃO 2: ARQUITETURA SEMANAL INTEGRADA POR MODALIDADE (SEM X/Y/Z) ================= */}
-      <section className="card p-5 sm:p-6 flex flex-col gap-4 border-l-4 border-l-lima">
+      <section
+        className={`card p-5 sm:p-6 flex-col gap-4 border-l-4 border-l-lima ${
+          mobileSectionTab === "blueprint" ? "flex" : "hidden xl:flex"
+        }`}
+      >
         <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-3">
           <div>
             <span className="t-label !text-accent-text inline-flex items-center gap-1.5">
@@ -874,7 +945,11 @@ export function EnergeticCalendarHub({
       </section>
 
       {/* ================= SEÇÃO 3: CALENDÁRIO PERENE VISUAL (8) + CHECKLIST DO DIA (4) ================= */}
-      <div className="bento-grid items-start">
+      <div
+        className={`bento-grid items-start ${
+          mobileSectionTab === "agenda" ? "" : "max-xl:hidden"
+        }`}
+      >
         {/* Esquerda (8 cols): Grade Calendário Seg -> Dom */}
         <section className="col-span-12 xl:col-span-8 card p-3 sm:p-6 flex flex-col gap-3 sm:gap-4">
           <div className="flex flex-wrap items-center justify-between gap-3">
@@ -1166,7 +1241,13 @@ export function EnergeticCalendarHub({
       </div>
 
       {/* ================= SEÇÃO 4: BLOCOS SEMANAIS (PERIODIZAÇÃO) ================= */}
-      <section className="card p-5 sm:p-6 flex flex-col gap-4">
+      <section
+        className={`card p-5 sm:p-6 flex-col gap-4 ${
+          mobileSectionTab === "curve" || mobileSectionTab === "blueprint"
+            ? "flex"
+            : "hidden xl:flex"
+        }`}
+      >
         <div>
           <span className="t-label">Plano Semanal Inteligente</span>
           <h2 className="t-h2 mt-0.5">

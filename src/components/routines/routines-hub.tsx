@@ -105,6 +105,7 @@ export function RoutinesHub({
     id: string;
     title: string;
   } | null>(null);
+  const [showRadarDetails, setShowRadarDetails] = useState(false);
 
   const todayMondayIdx = jsDayToMondayIndex(new Date().getDay());
 
@@ -284,65 +285,88 @@ export function RoutinesHub({
             </div>
           </div>
 
-          <div className="text-xs font-mono text-muted shrink-0">
-            <strong className="text-foreground">
-              {weeklyCoverage.totalWeeklyEffectiveSets}
-            </strong>{" "}
-            séries efetivas/sem ·{" "}
-            <strong className="text-foreground">
-              {weeklyCoverage.totalRoutinesAnalyzed}
-            </strong>{" "}
-            ficha(s)
+          <div className="flex items-center justify-between sm:justify-end gap-3 shrink-0">
+            <div className="text-xs font-mono text-muted">
+              <strong className="text-foreground">
+                {weeklyCoverage.totalWeeklyEffectiveSets}
+              </strong>{" "}
+              séries/sem ·{" "}
+              <strong className="text-foreground">
+                {weeklyCoverage.totalRoutinesAnalyzed}
+              </strong>{" "}
+              ficha(s)
+            </div>
+            <button
+              type="button"
+              onClick={() => setShowRadarDetails((v) => !v)}
+              className="h-8 px-2.5 rounded-lg border border-line bg-surface text-[11px] font-mono text-foreground hover:bg-foreground/5 inline-flex items-center gap-1 cursor-pointer"
+            >
+              <span>
+                {showRadarDetails
+                  ? "Ocultar análise"
+                  : `Ver análise (${weeklyCoverage.gaps.length} ajuste${
+                      weeklyCoverage.gaps.length === 1 ? "" : "s"
+                    })`}
+              </span>
+              {showRadarDetails ? (
+                <ChevronUp size={13} />
+              ) : (
+                <ChevronDown size={13} />
+              )}
+            </button>
           </div>
         </div>
 
-        {/* Pilares cobertos */}
-        {weeklyCoverage.coveredPillarsPt.length > 0 && (
-          <div className="flex flex-wrap gap-1.5">
-            {weeklyCoverage.coveredPillarsPt.map((pillar) => (
-              <span
-                key={pillar}
-                className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full border border-profundo/35 bg-lima/15 text-[11px] font-medium text-foreground"
-              >
-                <CheckCircle2 size={11} className="text-accent-text shrink-0" />
-                <span>{pillar}</span>
-              </span>
-            ))}
-          </div>
-        )}
-
-        {/* Lacunas detectadas */}
-        {weeklyCoverage.gaps.length > 0 && (
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-2.5 pt-1">
-            {weeklyCoverage.gaps.map((gap) => (
-              <div
-                key={gap.code}
-                className={`rounded-xl border p-3 flex items-start gap-2.5 ${
-                  gap.severity === "high"
-                    ? "border-amber-500/45 bg-amber-500/[0.07]"
-                    : "border-line bg-surface"
-                }`}
-              >
-                <AlertTriangle
-                  size={14}
-                  className={`shrink-0 mt-0.5 ${
-                    gap.severity === "high" ? "text-amber-500" : "text-muted"
-                  }`}
-                />
-                <div className="min-w-0">
-                  <span className="text-xs font-semibold text-foreground block leading-snug">
-                    {gap.titlePt}
+        {/* Pilares cobertos e Lacunas (recolhidos por padrão para não poluir a tela) */}
+        {showRadarDetails && (
+          <>
+            {weeklyCoverage.coveredPillarsPt.length > 0 && (
+              <div className="flex flex-wrap gap-1.5">
+                {weeklyCoverage.coveredPillarsPt.map((pillar) => (
+                  <span
+                    key={pillar}
+                    className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full border border-profundo/35 bg-lima/15 text-[11px] font-medium text-foreground"
+                  >
+                    <CheckCircle2 size={11} className="text-accent-text shrink-0" />
+                    <span>{pillar}</span>
                   </span>
-                  <p className="text-[11px] text-muted mt-0.5 leading-relaxed">
-                    {gap.detailPt}
-                  </p>
-                  <p className="text-[11px] text-foreground/90 mt-1 font-medium">
-                    Sugestão: {gap.suggestionPt}
-                  </p>
-                </div>
+                ))}
               </div>
-            ))}
-          </div>
+            )}
+
+            {weeklyCoverage.gaps.length > 0 && (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-2.5 pt-1">
+                {weeklyCoverage.gaps.map((gap) => (
+                  <div
+                    key={gap.code}
+                    className={`rounded-xl border p-3 flex items-start gap-2.5 ${
+                      gap.severity === "high"
+                        ? "border-amber-500/45 bg-amber-500/[0.07]"
+                        : "border-line bg-surface"
+                    }`}
+                  >
+                    <AlertTriangle
+                      size={14}
+                      className={`shrink-0 mt-0.5 ${
+                        gap.severity === "high" ? "text-amber-500" : "text-muted"
+                      }`}
+                    />
+                    <div className="min-w-0">
+                      <span className="text-xs font-semibold text-foreground block leading-snug">
+                        {gap.titlePt}
+                      </span>
+                      <p className="text-[11px] text-muted mt-0.5 leading-relaxed">
+                        {gap.detailPt}
+                      </p>
+                      <p className="text-[11px] text-foreground/90 mt-1 font-medium">
+                        Sugestão: {gap.suggestionPt}
+                      </p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </>
         )}
       </section>
 

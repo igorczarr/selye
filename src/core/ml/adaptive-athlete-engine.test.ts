@@ -88,4 +88,71 @@ describe("Phase 14 - Individual Machine Learning Adaptive Athlete Engine (EA)", 
     );
     assert.ok(RECOVERY_ATTITUDES_CATALOG.length >= 6);
   });
+
+  test("Preencher o Check-in Matinal nunca reduz a Capacidade Base (ex: 1700 EA) nem faz a reserva cair", () => {
+    const mockCalibration = {
+      schemaVersion: "1.0" as const,
+      calibratedAt: "2026-11-20T08:00:00Z",
+      calibratedCapacityEa: 1700,
+      recoveryVelocityPrior: 1.05,
+      recoveryGainPrior: 1.02,
+      initialConfidencePercent: 78,
+      uncertaintyMarginEa: 90,
+      readinessBaselineScore: 84,
+      readinessTierLabelPt: "Atleta Estruturado",
+      summaryPt: "Base calibrada em 1700 EA",
+      priorityRecommendationsPt: [],
+      factors: [],
+      inputs: {
+        primaryModality: "strength" as const,
+        complementaryModalities: [],
+        experienceLevel: "intermediate" as const,
+        trainingYears: 3,
+        weeklyHoursLast3Months: 5,
+        targetDaysPerWeek: 4,
+        habitualSleepHours: 7.5,
+        sleepRegularity: "consistent" as const,
+        lifeStressLevel: "low" as const,
+        occupationDemand: "sedentary_desk" as const,
+        tissueStatus: "fully_healthy" as const,
+      },
+    };
+
+    const beforeCheckin = learnAdaptiveAthleteProfile({
+      experienceLevel: "intermediate",
+      targetDaysPerWeek: 4,
+      currentWeeklyStreak: 0,
+      eaCalibration: mockCalibration,
+      sessionsLast28Days: [
+        { date: "2026-11-19", modalityCode: "strength", durationMinutes: 50, rpe: 7, rawLoadEa: 350 },
+      ],
+      checkinsLast28Days: [],
+      recoveryAttitudesLast7Days: [],
+      todayDateStr: "2026-11-20",
+    });
+
+    const afterNormalCheckin = learnAdaptiveAthleteProfile({
+      experienceLevel: "intermediate",
+      targetDaysPerWeek: 4,
+      currentWeeklyStreak: 0,
+      eaCalibration: mockCalibration,
+      sessionsLast28Days: [
+        { date: "2026-11-19", modalityCode: "strength", durationMinutes: 50, rpe: 7, rawLoadEa: 350 },
+      ],
+      checkinsLast28Days: [
+        { localDate: "2026-11-20", sleepQuality: 3, energyLevel: 3, muscleFreshness: 3, moodLevel: 3 },
+      ],
+      recoveryAttitudesLast7Days: [],
+      todayDateStr: "2026-11-20",
+    });
+
+    assert.ok(
+      afterNormalCheckin.personalCapacityEa >= 1700,
+      `EA Base (${afterNormalCheckin.personalCapacityEa}) jamais deve cair abaixo dos 1700 EA calibrados`
+    );
+    assert.ok(
+      afterNormalCheckin.availableReserveEa > beforeCheckin.availableReserveEa,
+      `Acordar e registrar o check-in matinal deve recarregar a reserva (${beforeCheckin.availableReserveEa} -> ${afterNormalCheckin.availableReserveEa}), nunca derrubá-la`
+    );
+  });
 });

@@ -79,6 +79,40 @@ function diffDaysSigned(fromStr: string, toStr: string): number {
   return Math.round((b - a) / (24 * 3600 * 1000));
 }
 
+/**
+ * Calcula a evolução estrutural de EA construída no ciclo (ex: 1700 EA base → 1900 EA meta).
+ *
+ * Diferente da "Bateria Disponível Hoje" (que oscila no curto prazo quando você treina e descansa),
+ * a EA do Ciclo no Calendário parte da sua Capacidade Base (`personalCapacityEa`, ex: 1700 EA)
+ * e cresce conforme você conclui treinos e hábitos de recuperação rumo à meta (ex: 1900 EA).
+ * Assim, treinar NUNCA derruba sua EA-alvo nem sua evolução acumulada no calendário.
+ */
+export function computeCycleBuiltEa(params: {
+  initialEa: number;
+  personalCapacityEa: number;
+  targetEa: number;
+  completedWorkoutsInCycle: number;
+  completedRechargeHabitsInCycle: number;
+}): number {
+  const baseAnchor = Math.max(
+    400,
+    Math.round(Math.max(params.initialEa || 0, params.personalCapacityEa || 0))
+  );
+  const safeTarget = Math.max(baseAnchor + 100, Math.round(params.targetEa || baseAnchor + 200));
+  const totalSpan = safeTarget - baseAnchor;
+
+  const workoutGain = Math.max(0, params.completedWorkoutsInCycle) * 18;
+  const habitGain = Math.max(0, params.completedRechargeHabitsInCycle) * 12;
+  const capacityGrowth = Math.max(0, Math.round(params.personalCapacityEa - baseAnchor));
+
+  const builtDelta = Math.min(
+    totalSpan + 40,
+    workoutGain + habitGain + capacityGrowth
+  );
+
+  return Math.round(baseAnchor + builtDelta);
+}
+
 export function reconcileEnergeticPlanProgress(input: {
   plan: EnergeticGrowthPlanResult;
   currentRealEa: number;

@@ -134,6 +134,7 @@ export function EvolutionHub({
   const [hoveredDay, setHoveredDay] = useState<
     EvolutionData["last28DaysChart"][number] | null
   >(null);
+  const [showMobileDeepDive, setShowMobileDeepDive] = useState(false);
 
   const {
     acwrResult,
@@ -340,8 +341,12 @@ export function EvolutionHub({
               </div>
             </section>
 
-            {/* Indicadores Fisiológicos 2×2 ao lado do Hero em telas largas */}
-            <section className="col-span-12 xl:col-span-5 grid grid-cols-2 gap-3">
+            {/* Indicadores Fisiológicos 2×2 ao lado do Hero em telas largas (recolhível no mobile) */}
+            <section
+              className={`col-span-12 xl:col-span-5 grid-cols-2 gap-3 ${
+                showMobileDeepDive ? "grid" : "hidden xl:grid"
+              }`}
+            >
               <div className="card p-4 flex flex-col justify-between gap-2" title="Indica se seus dias estão variados ou repetitivos">
                 <span className="t-label">Variedade da Rotina</span>
                 <p className="t-data text-2xl text-foreground">
@@ -379,8 +384,27 @@ export function EvolutionHub({
             </section>
           </div>
 
+          <button
+            type="button"
+            onClick={() => setShowMobileDeepDive((v) => !v)}
+            className="xl:hidden h-10 px-4 rounded-xl border border-line bg-surface text-xs font-mono font-semibold text-foreground hover:bg-foreground/5 flex items-center justify-between cursor-pointer"
+          >
+            <span>
+              {showMobileDeepDive
+                ? "Ocultar balanço detalhado e extrato de EA"
+                : "Ver balanço detalhado e extrato da Bateria (EA)"}
+            </span>
+            <span className="text-accent-text">
+              {showMobileDeepDive ? "▲" : "▼"}
+            </span>
+          </button>
+
           {/* Reserva de Energia Adaptativa Pessoal (EA) */}
-          <section className="card p-5 sm:p-6 flex flex-col gap-4">
+          <section
+            className={`card p-5 sm:p-6 flex-col gap-4 ${
+              showMobileDeepDive ? "flex" : "hidden xl:flex"
+            }`}
+          >
             <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-3">
               <div>
                 <span className="t-label !text-accent-text">
