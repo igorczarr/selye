@@ -173,6 +173,7 @@ function BiometricScoreBadge({
 export function RoutinesHub({
   routines,
   activeSession,
+  todayCompletedSessions = [],
   athletePrimaryModality = "strength",
   experienceLevel = "intermediate",
 }: {
@@ -182,10 +183,26 @@ export function RoutinesHub({
     title: string;
     startedAt?: string | Date;
   } | null;
+  todayCompletedSessions?: {
+    id: string;
+    title: string;
+    modalityCode: string;
+    durationMinutes: number;
+    loadUa: number;
+    rpeSession: number | null;
+    finishedAt: string;
+  }[];
   athletePrimaryModality?: CoreModalityCode;
   experienceLevel?: ExperienceLevel;
 }) {
   const router = useRouter();
+  const findCompletedForRoutine = (title?: string | null) => {
+    if (!title) return undefined;
+    const norm = title.trim().toLowerCase();
+    return todayCompletedSessions.find(
+      (s) => s.title.trim().toLowerCase() === norm
+    );
+  };
   const [isPending, startTransition] = useTransition();
   const [startingId, setStartingId] = useState<string | null>(null);
   const [selectedDay, setSelectedDay] = useState<number | "all">("all");
@@ -422,16 +439,37 @@ export function RoutinesHub({
             <span>Continuar Treino</span>
           </Link>
         </article>
-      ) : heroRoutine ? (
-        <article className="card p-4 sm:p-5 border-lima/50 ring-1 ring-lima/30 bg-gradient-to-br from-surface via-surface to-lima/[0.04] flex flex-col gap-3.5 shadow-sm">
+      ) : heroRoutine ? (() => {
+        const heroCompletedSession =
+          findCompletedForRoutine(heroRoutine.title) ||
+          (todayScheduledRoutine?.id === heroRoutine.id
+            ? todayCompletedSessions[0]
+            : undefined);
+        const isHeroDone = Boolean(heroCompletedSession);
+
+        return (
+        <article
+          className={`card p-4 sm:p-5 flex flex-col gap-3.5 shadow-sm transition-all ${
+            isHeroDone
+              ? "border-emerald-500/45 ring-1 ring-emerald-500/25 bg-gradient-to-br from-surface via-surface to-emerald-500/[0.05]"
+              : "border-lima/50 ring-1 ring-lima/30 bg-gradient-to-br from-surface via-surface to-lima/[0.04]"
+          }`}
+        >
           {/* Topo do card Hero: Badges + Trocar Treino */}
           <div className="flex items-center justify-between gap-2 flex-wrap">
             <div className="flex items-center gap-2 flex-wrap">
-              <span className="px-2.5 py-0.5 rounded-md text-[11px] font-mono font-bold bg-lima text-grafite shadow-2xs">
-                {todayScheduledRoutine?.id === heroRoutine.id
-                  ? `${todayWeekdayName} · Treino de Hoje`
-                  : `Treino Selecionado · ${todayWeekdayName}`}
-              </span>
+              {isHeroDone ? (
+                <span className="px-2.5 py-0.5 rounded-md text-[11px] font-mono font-bold bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 inline-flex items-center gap-1.5 shadow-2xs">
+                  <CheckCircle2 size={12} />
+                  <span>Treino feito · {todayWeekdayName}</span>
+                </span>
+              ) : (
+                <span className="px-2.5 py-0.5 rounded-md text-[11px] font-mono font-bold bg-lima text-grafite shadow-2xs">
+                  {todayScheduledRoutine?.id === heroRoutine.id
+                    ? `${todayWeekdayName} · Treino de Hoje`
+                    : `Treino Selecionado · ${todayWeekdayName}`}
+                </span>
+              )}
               <span className="chip text-[11px]">
                 {MODALITY_LABELS[heroRoutine.modalityCode] || heroRoutine.modalityCode}
               </span>
@@ -449,46 +487,86 @@ export function RoutinesHub({
             )}
           </div>
 
-          {/* Título, descrição e métricas rápidas + Botão Iniciar */}
+          {/* Título, descrição e métricas rápidas + Botão Iniciar ou Status Concluído */}
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
             <div className="min-w-0">
               <h2 className="text-xl sm:text-2xl font-extrabold text-foreground tracking-tight leading-snug">
-                {heroRoutine.title}
+                {isHeroDone && heroCompletedSession
+                  ? heroCompletedSession.title
+                  : heroRoutine.title}
               </h2>
-              {heroRoutine.description && (
+              {!isHeroDone && heroRoutine.description && (
                 <p className="text-muted text-xs mt-0.5 line-clamp-1">
                   {heroRoutine.description}
                 </p>
               )}
               <div className="mt-2 flex flex-wrap items-center gap-3 text-xs font-mono text-muted">
-                <span className="inline-flex items-center gap-1">
-                  <Clock size={13} className="text-accent-text" />
-                  ~{heroEstMin} min
-                </span>
-                <span className="inline-flex items-center gap-1">
-                  <Layers size={13} className="text-accent-text" />
-                  {heroPrescriptions.length} exercícios · {heroTotalSets} séries
-                </span>
-                {heroEffect && heroEffect.snapshot.estimatedLoadUa > 0 && (
-                  <span className="inline-flex items-center gap-1 text-foreground font-semibold">
-                    <Zap size={12} className="text-accent-text" />
-                    ~{heroEffect.snapshot.estimatedLoadUa} EA
-                  </span>
+                {isHeroDone && heroCompletedSession ? (
+                  <>
+                    <span className="inline-flex items-center gap-1 text-emerald-400 font-semibold">
+                      <Clock size={13} />
+                      {heroCompletedSession.durationMinutes} min
+                    </span>
+                    <span className="inline-flex items-center gap-1">
+                      RPE {heroCompletedSession.rpeSession ?? 8}/10
+                    </span>
+                    <span className="inline-flex items-center gap-1 text-foreground font-semibold">
+                      <Zap size={12} className="text-emerald-400" />
+                      {heroCompletedSession.loadUa} EA
+                    </span>
+                  </>
+                ) : (
+                  <>
+                    <span className="inline-flex items-center gap-1">
+                      <Clock size={13} className="text-accent-text" />
+                      ~{heroEstMin} min
+                    </span>
+                    <span className="inline-flex items-center gap-1">
+                      <Layers size={13} className="text-accent-text" />
+                      {heroPrescriptions.length} exercícios · {heroTotalSets} séries
+                    </span>
+                    {heroEffect && heroEffect.snapshot.estimatedLoadUa > 0 && (
+                      <span className="inline-flex items-center gap-1 text-foreground font-semibold">
+                        <Zap size={12} className="text-accent-text" />
+                        ~{heroEffect.snapshot.estimatedLoadUa} EA
+                      </span>
+                    )}
+                  </>
                 )}
               </div>
             </div>
 
-            <button
-              type="button"
-              disabled={isPending}
-              onClick={() => handleStartRoutine(heroRoutine)}
-              className="btn btn-primary h-11 px-6 text-xs font-mono font-bold shrink-0 inline-flex items-center justify-center gap-2 shadow-sm"
-            >
-              <Play size={14} fill="currentColor" />
-              <span>
-                {startingId === heroRoutine.id ? "Iniciando..." : "Iniciar Treino Agora"}
-              </span>
-            </button>
+            {isHeroDone ? (
+              <div className="flex items-center gap-2 shrink-0">
+                <span className="h-11 px-4 rounded-xl bg-emerald-500/15 border border-emerald-500/35 text-emerald-400 text-xs font-mono font-bold inline-flex items-center justify-center gap-1.5 select-none">
+                  <CheckCircle2 size={15} />
+                  <span>Concluído hoje</span>
+                </span>
+                <button
+                  type="button"
+                  disabled={isPending}
+                  onClick={() => handleStartRoutine(heroRoutine)}
+                  className="btn btn-ghost h-11 px-3.5 text-xs font-mono shrink-0 inline-flex items-center justify-center gap-1.5"
+                >
+                  <Play size={12} fill="currentColor" />
+                  <span>
+                    {startingId === heroRoutine.id ? "Iniciando..." : "Repetir"}
+                  </span>
+                </button>
+              </div>
+            ) : (
+              <button
+                type="button"
+                disabled={isPending}
+                onClick={() => handleStartRoutine(heroRoutine)}
+                className="btn btn-primary h-11 px-6 text-xs font-mono font-bold shrink-0 inline-flex items-center justify-center gap-2 shadow-sm"
+              >
+                <Play size={14} fill="currentColor" />
+                <span>
+                  {startingId === heroRoutine.id ? "Iniciando..." : "Iniciar Treino Agora"}
+                </span>
+              </button>
+            )}
           </div>
 
           {/* Acordeão de exercícios do Hero (Menos poluição visual e mais espaço em branco) */}
@@ -537,7 +615,8 @@ export function RoutinesHub({
             </div>
           )}
         </article>
-      ) : (
+        );
+      })() : (
         <article className="card p-4 sm:p-5 border-line bg-surface/60 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
           <div className="flex items-start gap-3">
             <div className="w-10 h-10 rounded-xl bg-foreground/5 text-muted flex items-center justify-center shrink-0">
@@ -1022,6 +1101,7 @@ export function RoutinesHub({
                 ? prescriptions
                 : prescriptions.slice(0, 4);
               const isStartingThis = isPending && startingId === routine.id;
+              const doneToday = findCompletedForRoutine(routine.title);
 
               return (
                 <article
@@ -1030,22 +1110,35 @@ export function RoutinesHub({
                     layoutMode === "carousel"
                       ? "snap-start shrink-0 w-[300px] sm:w-[340px]"
                       : "w-full"
-                  } ${isToday ? "border-lima ring-1 ring-lima/50" : ""}`}
+                  } ${
+                    doneToday
+                      ? "border-emerald-500/45 ring-1 ring-emerald-500/25 bg-gradient-to-br from-surface via-surface to-emerald-500/[0.04]"
+                      : isToday
+                        ? "border-lima ring-1 ring-lima/50"
+                        : ""
+                  }`}
                 >
                   <div>
                     {/* Metadados topo + Menu da ficha (Editar / Duplicar / Remover) */}
                     <div className="flex items-center justify-between gap-2">
                       <div className="flex items-center gap-1.5 flex-wrap">
-                        {dayLabel && (
-                          <span
-                            className={`px-2 py-0.5 rounded-full text-[11px] font-mono font-semibold ${
-                              isToday
-                                ? "bg-lima text-grafite"
-                                : "bg-foreground/8 text-foreground"
-                            }`}
-                          >
-                            {isToday ? `${dayLabel} · Hoje` : dayLabel}
+                        {doneToday ? (
+                          <span className="px-2 py-0.5 rounded-full text-[11px] font-mono font-bold bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 inline-flex items-center gap-1">
+                            <CheckCircle2 size={11} />
+                            <span>Feito hoje</span>
                           </span>
+                        ) : (
+                          dayLabel && (
+                            <span
+                              className={`px-2 py-0.5 rounded-full text-[11px] font-mono font-semibold ${
+                                isToday
+                                  ? "bg-lima text-grafite"
+                                  : "bg-foreground/8 text-foreground"
+                              }`}
+                            >
+                              {isToday ? `${dayLabel} · Hoje` : dayLabel}
+                            </span>
+                          )
                         )}
                         <span className="chip text-[11px]">{modalityLabel}</span>
                       </div>
@@ -1218,10 +1311,23 @@ export function RoutinesHub({
                       type="button"
                       disabled={isPending}
                       onClick={() => handleStartRoutine(routine)}
-                      className="btn btn-dark h-9 w-full text-xs"
+                      className={
+                        doneToday
+                          ? "h-9 w-full rounded-xl border border-emerald-500/35 bg-emerald-500/10 hover:bg-emerald-500/15 text-emerald-400 font-mono font-semibold text-xs inline-flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
+                          : "btn btn-dark h-9 w-full text-xs"
+                      }
                     >
-                      <Play size={12} fill="currentColor" />
-                      <span>{isStartingThis ? "Abrindo..." : "Treinar"}</span>
+                      {doneToday ? (
+                        <>
+                          <CheckCircle2 size={13} />
+                          <span>{isStartingThis ? "Abrindo..." : "Treino feito · Repetir"}</span>
+                        </>
+                      ) : (
+                        <>
+                          <Play size={12} fill="currentColor" />
+                          <span>{isStartingThis ? "Abrindo..." : "Treinar"}</span>
+                        </>
+                      )}
                     </button>
                   </div>
                 </article>

@@ -15,6 +15,7 @@ async function RoutinesList() {
     <RoutinesHub
       routines={data.routines}
       activeSession={data.activeSession}
+      todayCompletedSessions={data.todayCompletedSessions}
       athletePrimaryModality={athleteCtx.primaryModality}
       experienceLevel={athleteCtx.experienceLevel}
     />

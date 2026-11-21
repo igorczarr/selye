@@ -72,16 +72,28 @@ export interface RoutineCardData {
   }[];
 }
 
+export interface TodayCompletedSessionSummary {
+  id: string;
+  title: string;
+  modalityCode: string;
+  durationMinutes: number;
+  loadUa: number;
+  rpeSession: number | null;
+  finishedAt: string;
+}
+
 interface WorkoutRunnerProps {
   initialSession: any;
   sessionExercises: SessionExerciseItem[];
   routines: RoutineCardData[];
+  todayCompletedSessions?: TodayCompletedSessionSummary[];
 }
 
 export function WorkoutRunner({
   initialSession,
   sessionExercises,
   routines,
+  todayCompletedSessions = [],
 }: WorkoutRunnerProps) {
   const router = useRouter();
   const [session, setSession] = useState<any>(initialSession);
@@ -92,6 +104,24 @@ export function WorkoutRunner({
   const [lastCompletedTime, setLastCompletedTime] = useState<Date | null>(null);
   const [sessionRpe, setSessionRpe] = useState<number>(8);
   const [isFinishedBannerOpen, setIsFinishedBannerOpen] = useState(false);
+  const [localCompletedToday, setLocalCompletedToday] = useState<
+    TodayCompletedSessionSummary[]
+  >([]);
+
+  const mergedCompletedToday = (() => {
+    const map = new Map<string, TodayCompletedSessionSummary>();
+    for (const s of localCompletedToday) map.set(s.id, s);
+    for (const s of todayCompletedSessions) map.set(s.id, s);
+    return Array.from(map.values());
+  })();
+
+  const findCompletedForRoutine = (title?: string | null) => {
+    if (!title) return undefined;
+    const norm = title.trim().toLowerCase();
+    return mergedCompletedToday.find(
+      (s) => s.title.trim().toLowerCase() === norm
+    );
+  };
 
   // Filtro de visão: "hoje" (card slim de hoje) vs "todas" (o widget anterior de fichas)
   const [viewFilter, setViewFilter] = useState<"hoje" | "todas">("hoje");
@@ -212,8 +242,31 @@ export function WorkoutRunner({
 
   const handleFinish = () => {
     if (!session) return;
+    const finishedSessionSnapshot = session;
     startTransition(async () => {
-      await finishWorkout(session.id, sessionRpe);
+      await finishWorkout(finishedSessionSnapshot.id, sessionRpe);
+      const durMin = finishedSessionSnapshot.startedAt
+        ? Math.max(
+            15,
+            Math.round(
+              (Date.now() -
+                new Date(finishedSessionSnapshot.startedAt).getTime()) /
+                60000
+            )
+          )
+        : 45;
+      setLocalCompletedToday((prev) => [
+        {
+          id: finishedSessionSnapshot.id,
+          title: finishedSessionSnapshot.title || "Treino",
+          modalityCode: finishedSessionSnapshot.modalityCode || "strength",
+          durationMinutes: durMin,
+          loadUa: Math.round(durMin * sessionRpe),
+          rpeSession: sessionRpe,
+          finishedAt: new Date().toISOString(),
+        },
+        ...prev,
+      ]);
       setSession(null);
       setRestRemaining(null);
       setIsFinishedBannerOpen(true);
@@ -327,6 +380,14 @@ export function WorkoutRunner({
     const isTodayScheduled =
       typeof tpl?.dayOfWeek === "number" && tpl.dayOfWeek === todayJsDay;
 
+    const completedForActive = findCompletedForRoutine(activeRoutine?.title);
+    const completedHeroSession =
+      completedForActive ||
+      (isTodayScheduled || activeRoutine?.id === todayScheduledRoutine?.id
+        ? mergedCompletedToday[0]
+        : undefined);
+    const isHeroDone = Boolean(completedHeroSession);
+
     return (
       <div className="flex flex-col gap-3">
         {/* FILTROS E MENUS COMPACTOS: Alternância "Hoje" vs "Todas as Fichas" */}
@@ -341,8 +402,14 @@ export function WorkoutRunner({
                   : "text-muted hover:text-foreground"
               }`}
             >
-              <span className="w-1.5 h-1.5 rounded-full bg-lima" />
-              <span>Hoje</span>
+              <span
+                className={`w-1.5 h-1.5 rounded-full ${
+                  mergedCompletedToday.length > 0 ? "bg-emerald-400" : "bg-lima"
+                }`}
+              />
+              <span>
+                {mergedCompletedToday.length > 0 ? "Hoje · Feito" : "Hoje"}
+              </span>
             </button>
             <button
               type="button"
@@ -370,52 +437,93 @@ export function WorkoutRunner({
 
         {/* MODO 1: VISÃO "HOJE" -> CARD SLIM, BREVE E PRECISO COM ACORDEÃO */}
         {viewFilter === "hoje" && (
-          <article className="card p-4 sm:p-4.5 flex flex-col gap-3 border-lima/40 ring-1 ring-lima/30 transition-all">
+          <article
+            className={`card p-4 sm:p-4.5 flex flex-col gap-3 transition-all ${
+              isHeroDone
+                ? "border-emerald-500/45 ring-1 ring-emerald-500/25 bg-gradient-to-br from-surface via-surface to-emerald-500/[0.05]"
+                : "border-lima/40 ring-1 ring-lima/30"
+            }`}
+          >
             {/* Linha Principal Slim */}
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
               <div className="min-w-0 flex-1">
-                <div className="flex items-center gap-2">
-                  <span className="px-2 py-0.5 rounded text-[10px] font-mono font-bold bg-lima text-grafite">
-                    {isTodayScheduled ? "Hoje" : "Sugerido"}
-                  </span>
+                <div className="flex items-center gap-2 flex-wrap">
+                  {isHeroDone ? (
+                    <span className="px-2 py-0.5 rounded text-[10px] font-mono font-bold bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 inline-flex items-center gap-1">
+                      <CheckCircle2 size={11} />
+                      <span>Treino feito</span>
+                    </span>
+                  ) : (
+                    <span className="px-2 py-0.5 rounded text-[10px] font-mono font-bold bg-lima text-grafite">
+                      {isTodayScheduled ? "Hoje" : "Sugerido"}
+                    </span>
+                  )}
                   <span className="text-xs font-mono text-muted">
-                    {todayWeekdayName} · {exerciseCount}{" "}
-                    {exerciseCount === 1 ? "exercício" : "exercícios"} · ~45 min
+                    {isHeroDone && completedHeroSession
+                      ? `${todayWeekdayName} · ${completedHeroSession.durationMinutes} min · RPE ${completedHeroSession.rpeSession ?? 8}/10 · ${completedHeroSession.loadUa} EA`
+                      : `${todayWeekdayName} · ${exerciseCount} ${
+                          exerciseCount === 1 ? "exercício" : "exercícios"
+                        } · ~45 min`}
                   </span>
                 </div>
 
                 <h3 className="text-base sm:text-lg font-bold text-foreground mt-1 truncate">
-                  {activeRoutine?.title}
+                  {isHeroDone && completedHeroSession
+                    ? completedHeroSession.title
+                    : activeRoutine?.title}
                 </h3>
               </div>
 
-              {/* Ações Diretas: Botão Iniciar + Acordeão Exercícios */}
+              {/* Ações Diretas: Estado Concluído ou Botão Iniciar + Acordeão Exercícios */}
               <div className="flex items-center gap-2 shrink-0 self-end sm:self-center">
-                <button
-                  type="button"
-                  onClick={() =>
-                    setIsExercisesAccordionOpen((prev) => !prev)
-                  }
-                  aria-expanded={isExercisesAccordionOpen}
-                  aria-label="Ver exercícios prescritos"
-                  className="h-9 px-3 rounded-lg border border-line bg-surface hover:bg-foreground/[0.04] text-xs font-mono text-muted hover:text-foreground inline-flex items-center transition-all cursor-pointer"
-                >
-                  <span>
-                    {isExercisesAccordionOpen ? "Ocultar exercícios" : "Exercícios"}
-                  </span>
-                </button>
+                {prescs.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setIsExercisesAccordionOpen((prev) => !prev)
+                    }
+                    aria-expanded={isExercisesAccordionOpen}
+                    aria-label="Ver exercícios prescritos"
+                    className="h-9 px-3 rounded-lg border border-line bg-surface hover:bg-foreground/[0.04] text-xs font-mono text-muted hover:text-foreground inline-flex items-center transition-all cursor-pointer"
+                  >
+                    <span>
+                      {isExercisesAccordionOpen ? "Ocultar" : "Exercícios"}
+                    </span>
+                  </button>
+                )}
 
-                <button
-                  type="button"
-                  disabled={isPending}
-                  onClick={() =>
-                    handleStart(activeRoutine?.id, activeRoutine?.title)
-                  }
-                  className="h-9 px-4 rounded-lg bg-lima hover:brightness-105 active:scale-[0.99] text-grafite font-mono font-bold text-xs inline-flex items-center gap-1.5 shadow-sm transition-all cursor-pointer"
-                >
-                  <Play size={13} fill="currentColor" />
-                  <span>{isPending ? "Iniciando..." : "Treinar"}</span>
-                </button>
+                {isHeroDone ? (
+                  <>
+                    <span className="h-9 px-3.5 rounded-lg bg-emerald-500/15 border border-emerald-500/35 text-emerald-400 font-mono font-bold text-xs inline-flex items-center gap-1.5 select-none">
+                      <Check size={14} strokeWidth={2.8} />
+                      <span>Concluído</span>
+                    </span>
+                    <button
+                      type="button"
+                      disabled={isPending}
+                      onClick={() =>
+                        handleStart(activeRoutine?.id, activeRoutine?.title)
+                      }
+                      title="Iniciar outra sessão hoje"
+                      className="h-9 px-3 rounded-lg border border-line bg-surface hover:bg-foreground/[0.04] text-xs font-mono text-muted hover:text-foreground inline-flex items-center gap-1.5 transition-all cursor-pointer"
+                    >
+                      <Play size={11} fill="currentColor" />
+                      <span>{isPending ? "..." : "Repetir"}</span>
+                    </button>
+                  </>
+                ) : (
+                  <button
+                    type="button"
+                    disabled={isPending}
+                    onClick={() =>
+                      handleStart(activeRoutine?.id, activeRoutine?.title)
+                    }
+                    className="h-9 px-4 rounded-lg bg-lima hover:brightness-105 active:scale-[0.99] text-grafite font-mono font-bold text-xs inline-flex items-center gap-1.5 shadow-sm transition-all cursor-pointer"
+                  >
+                    <Play size={13} fill="currentColor" />
+                    <span>{isPending ? "Iniciando..." : "Treinar"}</span>
+                  </button>
+                )}
               </div>
             </div>
 
@@ -446,26 +554,38 @@ export function WorkoutRunner({
                 typeof day === "number" &&
                 jsDayToMondayIndex(day) === todayMondayIdx;
               const count = rTpl?.prescriptions?.length ?? 0;
+              const doneToday = findCompletedForRoutine(r.title);
 
               return (
                 <article
                   key={r.id}
                   className={`card card-interactive p-4 flex flex-col justify-between gap-3.5 transition-all ${
-                    isToday ? "border-lima ring-1 ring-lima/60" : ""
+                    doneToday
+                      ? "border-emerald-500/45 ring-1 ring-emerald-500/25 bg-gradient-to-br from-surface via-surface to-emerald-500/[0.04]"
+                      : isToday
+                        ? "border-lima ring-1 ring-lima/60"
+                        : ""
                   }`}
                 >
                   <div className="min-w-0">
-                    <div className="flex items-center gap-1.5">
-                      {typeof day === "number" && (
-                        <span
-                          className={`px-2 py-0.5 rounded text-[10px] font-mono font-semibold ${
-                            isToday
-                              ? "bg-lima text-grafite"
-                              : "bg-foreground/8 text-muted"
-                          }`}
-                        >
-                          {isToday ? "Hoje" : getWeekdayLabelPt(day, "short")}
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      {doneToday ? (
+                        <span className="px-2 py-0.5 rounded text-[10px] font-mono font-bold bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 inline-flex items-center gap-1">
+                          <Check size={10} strokeWidth={2.8} />
+                          <span>Feito hoje</span>
                         </span>
+                      ) : (
+                        typeof day === "number" && (
+                          <span
+                            className={`px-2 py-0.5 rounded text-[10px] font-mono font-semibold ${
+                              isToday
+                                ? "bg-lima text-grafite"
+                                : "bg-foreground/8 text-muted"
+                            }`}
+                          >
+                            {isToday ? "Hoje" : getWeekdayLabelPt(day, "short")}
+                          </span>
+                        )
                       )}
                       <span className="t-data text-[11px] text-muted">
                         {count} {count === 1 ? "exercício" : "exercícios"}
@@ -480,10 +600,23 @@ export function WorkoutRunner({
                     type="button"
                     onClick={() => handleStart(r.id, r.title)}
                     disabled={isPending}
-                    className="btn btn-dark h-9 w-full text-xs"
+                    className={
+                      doneToday
+                        ? "h-9 w-full rounded-lg border border-emerald-500/35 bg-emerald-500/10 hover:bg-emerald-500/15 text-emerald-400 font-mono font-semibold text-xs inline-flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
+                        : "btn btn-dark h-9 w-full text-xs"
+                    }
                   >
-                    <Play size={12} fill="currentColor" />
-                    <span>{isPending ? "Iniciando..." : "Treinar"}</span>
+                    {doneToday ? (
+                      <>
+                        <CheckCircle2 size={13} />
+                        <span>{isPending ? "Iniciando..." : "Treino feito · Repetir"}</span>
+                      </>
+                    ) : (
+                      <>
+                        <Play size={12} fill="currentColor" />
+                        <span>{isPending ? "Iniciando..." : "Treinar"}</span>
+                      </>
+                    )}
                   </button>
                 </article>
               );

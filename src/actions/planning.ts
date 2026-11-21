@@ -32,6 +32,7 @@ import {
   type ExperienceLevel,
 } from "@/core/modalities";
 import { estimateRoutineDurationMinutes } from "@/lib/routine-metrics";
+import { getLocalTodayDateStr } from "@/lib/date";
 import { calculateUnifiedSessionLoad } from "@/core/performance/training-load";
 import type {
   DailyDecisionResult,
@@ -146,7 +147,7 @@ export async function getActivePlanningSnapshot(): Promise<ActivePlanningSnapsho
   const dashboard = await getDashboardData();
   const user = dashboard.user;
   const adaptive = dashboard.performanceSummary.adaptiveProfile;
-  const todayDateStr = new Date().toISOString().split("T")[0];
+  const todayDateStr = getLocalTodayDateStr();
 
   const [goalRows, commitmentRows, checkinRows, prRows, profileRows, userSportRows] =
     await Promise.all([
@@ -448,7 +449,7 @@ export async function getActivePlanningSnapshot(): Promise<ActivePlanningSnapsho
     completedCommitmentKeys: completedKeys,
     customCommitments: commitments,
     finishedSessionDates: (dashboard.recentSessions || []).map((s: any) =>
-      new Date(s.finishedAt || s.startedAt).toISOString().split("T")[0]
+      getLocalTodayDateStr(new Date(s.finishedAt || s.startedAt))
     ),
     historicalCheckins: relevantCheckins.map((c) => ({
       localDate: normalizeDateString(c.localDate),

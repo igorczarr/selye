@@ -88,6 +88,7 @@ async function DashboardContent() {
         <WorkoutRunner
           initialSession={data.activeSession}
           sessionExercises={data.activeSessionExercises}
+          todayCompletedSessions={data.todayCompletedSessions}
           routines={data.routines.map((r) => ({
             id: r.id,
             title: r.title,

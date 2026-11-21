@@ -625,6 +625,39 @@ export async function getDashboardData() {
     recoveryBudgetUsagePercent: recoveryBudget.usagePercent,
   });
 
+  const todayCompletedSessions = completedSessions
+    .filter(
+      (s) => getLocalTodayDateStr(new Date(s.finishedAt || s.startedAt)) === today
+    )
+    .map((s) => {
+      const durationMinutes = s.finishedAt
+        ? Math.max(
+            15,
+            Math.round(
+              (new Date(s.finishedAt).getTime() -
+                new Date(s.startedAt).getTime()) /
+                60000
+            )
+          )
+        : 45;
+      const loadUa = calculateUnifiedSessionLoad({
+        durationMinutes,
+        rpe: s.rpeSession || 7,
+        modalityCode: s.modalityCode,
+        volumeKg: volumeBySessionId.get(s.id) || 0,
+        distanceKm: distanceBySessionId.get(s.id) || 0,
+      });
+      return {
+        id: s.id,
+        title: s.title,
+        modalityCode: s.modalityCode,
+        durationMinutes,
+        loadUa,
+        rpeSession: s.rpeSession ?? 7,
+        finishedAt: (s.finishedAt || s.startedAt).toISOString(),
+      };
+    });
+
   const recentSessionsEnriched = recentSessions.map((s) => {
     const durationMinutes = s.finishedAt
       ? Math.max(
@@ -749,6 +782,7 @@ export async function getDashboardData() {
     activeSession: activeSession || null,
     activeSessionExercises,
     recentSessions: recentSessionsEnriched,
+    todayCompletedSessions,
     activitiesCount: Math.max(activities.length, completedSessions.length),
     stats: {
       monthlyVolumeKg: Math.round(monthlyVolumeKg),
@@ -893,7 +927,7 @@ export async function startWorkout(
 export async function finishWorkout(sessionId: string, rpe: number = 8) {
   const user = await getOrCreateDemoUser();
   const finishedAt = new Date();
-  const todayStr = finishedAt.toISOString().split("T")[0];
+  const todayStr = getLocalTodayDateStr(finishedAt);
 
   const [session] = await db
     .update(schema.workoutSessions)
@@ -952,6 +986,7 @@ export async function finishWorkout(sessionId: string, rpe: number = 8) {
   }
 
   revalidatePath("/");
+  revalidatePath("/treinos");
   revalidatePath("/calendario");
   revalidatePath("/evolucao");
   revalidatePath("/analytics");
