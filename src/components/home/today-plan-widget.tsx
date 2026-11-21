@@ -34,7 +34,7 @@ export function TodayPlanWidget({
     {}
   );
 
-  const { plan, progress, activeGoal } = snapshot;
+  const { plan, progress, activeGoal, dailyCoach } = snapshot;
   const todayDay = progress.todayDay;
   if (!todayDay) return null;
 
@@ -68,9 +68,23 @@ export function TodayPlanWidget({
 
   return (
     <section
-      aria-label="Seu Passo de Hoje no Calendário Energético"
+      aria-label="Seu Passo de Hoje no Calendário do Seu Corpo"
       className="card p-5 sm:p-6 flex flex-col gap-4"
     >
+      {dailyCoach?.adaptation?.isSoftenedToday && (
+        <div className="rounded-xl border border-amber-400/40 bg-amber-500/10 px-3.5 py-2.5 flex items-center justify-between gap-2 text-xs text-foreground">
+          <div className="flex items-center gap-2">
+            <span className="px-2 py-0.5 rounded font-mono text-[10px] font-bold bg-amber-500/25 text-amber-400 uppercase">
+              {dailyCoach.adaptation.badgePt}
+            </span>
+            <span className="font-medium">{dailyCoach.adaptation.headlinePt}</span>
+          </div>
+          <span className="text-[11px] font-mono text-muted hidden sm:inline">
+            Ajuste automático
+          </span>
+        </div>
+      )}
+
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 items-stretch">
         {/* Esquerda (5 cols): Resumo do Ciclo & Barra de EA */}
         <div className="lg:col-span-5 flex flex-col justify-between gap-3.5">
@@ -78,7 +92,7 @@ export function TodayPlanWidget({
             <div className="flex flex-wrap items-center gap-2">
               <span className="inline-flex items-center gap-1.5 t-label !text-accent-text">
                 <CalendarDays size={13} />
-                <span>Seu Passo de Hoje no Plano</span>
+                <span>Seu Passo no Calendário do Seu Corpo</span>
               </span>
               <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-foreground/8 text-[10px] font-mono text-foreground">
                 <span
@@ -209,7 +223,7 @@ export function TodayPlanWidget({
               href="/calendario"
               className="inline-flex items-center gap-1.5 text-xs font-mono font-semibold text-accent-text hover:underline"
             >
-              <span>Abrir Calendário & Simulador</span>
+              <span>Abrir Calendário do Seu Corpo</span>
               <ArrowRight size={13} />
             </Link>
           </div>

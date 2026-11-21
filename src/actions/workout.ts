@@ -36,6 +36,7 @@ import {
 } from "@/core/ml/adaptive-athlete-engine";
 import { generatePerformanceRecommendations } from "@/core/performance/recommendations-engine";
 import { getWeekdayLabelPt } from "@/lib/week";
+import { getLocalTodayDateStr } from "@/lib/date";
 import { getUserRoutines } from "./routines";
 import { dispatchSmartNotification } from "./notifications";
 import { evaluateAndUnlockAchievements } from "./achievements";
@@ -220,7 +221,7 @@ export async function getOrCreateDemoUser() {
 export async function getDashboardData() {
   const user = await getOrCreateDemoUser();
   const now = new Date();
-  const today = now.toISOString().split("T")[0];
+  const today = getLocalTodayDateStr(now);
   const past28Days = new Date(now);
   past28Days.setDate(now.getDate() - 28);
 
@@ -538,7 +539,7 @@ export async function getDashboardData() {
 
   const yesterdayDate = new Date(now);
   yesterdayDate.setDate(now.getDate() - 1);
-  const yesterdayStr = yesterdayDate.toISOString().split("T")[0];
+  const yesterdayStr = getLocalTodayDateStr(yesterdayDate);
   const yesterdayLoadUa = dailyLoads.get(yesterdayStr) || 0;
   const yesterdaySession = sessionLoadInputs.find(
     (s) => s.date === yesterdayStr
@@ -1201,7 +1202,7 @@ export async function submitMorningCheckin(input: MorningCheckinInput) {
   const todayStr =
     input.localDate && /^\d{4}-\d{2}-\d{2}$/.test(input.localDate)
       ? input.localDate
-      : new Date().toISOString().split("T")[0];
+      : getLocalTodayDateStr();
 
   const cleanInput: MorningCheckinInput = {
     sleepQuality: Math.max(1, Math.min(5, Math.round(input.sleepQuality || 4))),
@@ -1288,7 +1289,7 @@ export async function toggleRecoveryAttitude(code: RecoveryAttitudeCode) {
   const meta = RECOVERY_ATTITUDE_MAP[code];
   if (!meta) throw new Error("Atitude regenerativa inválida.");
 
-  const todayStr = new Date().toISOString().split("T")[0];
+  const todayStr = getLocalTodayDateStr();
   const recent = await db
     .select()
     .from(schema.bodyMetrics)
@@ -1354,7 +1355,7 @@ export async function toggleRecoveryAttitude(code: RecoveryAttitudeCode) {
  */
 export async function toggleRegenerativeWeekShield() {
   const user = await getOrCreateDemoUser();
-  const todayStr = new Date().toISOString().split("T")[0];
+  const todayStr = getLocalTodayDateStr();
   const currentWeekStart = getIsoWeekStart(todayStr);
 
   const existingRows = await db

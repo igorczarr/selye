@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useTransition } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import {
   formatDuration,
   calculateElapsedSeconds,
@@ -14,7 +15,9 @@ import {
   cancelWorkout,
 } from "@/actions/workout";
 import { getWeekdayLabelPt, jsDayToMondayIndex } from "@/lib/week";
+import { getModalityProfile } from "@/core/performance/training-load";
 import { ExerciseLink } from "@/components/catalog/exercise-link";
+import { ModalPortal } from "@/components/ui/modal-portal";
 import {
   Play,
   Check,
@@ -23,6 +26,15 @@ import {
   Dumbbell,
   Info,
   XCircle,
+  ArrowRightLeft,
+  Calendar,
+  X,
+  Plus,
+  Flame,
+  ChevronDown,
+  ChevronUp,
+  LayoutGrid,
+  Sparkles,
 } from "lucide-react";
 
 interface SetLogItem {
@@ -42,13 +54,21 @@ interface SessionExerciseItem {
   sets?: SetLogItem[];
 }
 
-interface RoutineCardData {
+export interface PrescriptionSummary {
+  id: string;
+  exerciseNamePt?: string | null;
+  exerciseNameEn?: string | null;
+  targetSets?: number | null;
+  targetReps?: number | null;
+}
+
+export interface RoutineCardData {
   id: string;
   title: string;
   modalityCode: string;
   templates?: {
     dayOfWeek?: number | null;
-    prescriptions?: { id: string }[];
+    prescriptions?: PrescriptionSummary[];
   }[];
 }
 
@@ -72,6 +92,32 @@ export function WorkoutRunner({
   const [lastCompletedTime, setLastCompletedTime] = useState<Date | null>(null);
   const [sessionRpe, setSessionRpe] = useState<number>(8);
   const [isFinishedBannerOpen, setIsFinishedBannerOpen] = useState(false);
+
+  // Filtro de visão: "hoje" (card slim de hoje) vs "todas" (o widget anterior de fichas)
+  const [viewFilter, setViewFilter] = useState<"hoje" | "todas">("hoje");
+  const [isExercisesAccordionOpen, setIsExercisesAccordionOpen] = useState(false);
+  const [openSwitchModal, setOpenSwitchModal] = useState(false);
+
+  // Identificação inteligente do Treino de Hoje (baixa fricção)
+  const todayJsDay = new Date().getDay();
+  const todayMondayIdx = jsDayToMondayIndex(todayJsDay);
+  const todayWeekdayName = getWeekdayLabelPt(todayJsDay, "full");
+
+  const todayScheduledRoutine = routines.find((r) => {
+    const tpl = r.templates?.[0];
+    return typeof tpl?.dayOfWeek === "number" && tpl.dayOfWeek === todayJsDay;
+  });
+
+  const [selectedRoutineId, setSelectedRoutineId] = useState<string>(() => {
+    if (todayScheduledRoutine) return todayScheduledRoutine.id;
+    return routines[0]?.id || "";
+  });
+
+  const activeRoutine =
+    routines.find((r) => r.id === selectedRoutineId) ||
+    todayScheduledRoutine ||
+    routines[0] ||
+    null;
 
   // Estado local otimista das séries (sincronizado com set_logs reais do banco)
   const [setStateMap, setSetStateMap] = useState<
@@ -102,7 +148,6 @@ export function WorkoutRunner({
     return initial;
   });
 
-  // Atualiza mapa quando sessionExercises recarrega após iniciar nova ficha
   useEffect(() => {
     setSession(initialSession);
     const next: Record<
@@ -157,6 +202,7 @@ export function WorkoutRunner({
 
   const handleStart = (programId?: string, title?: string) => {
     setIsFinishedBannerOpen(false);
+    setOpenSwitchModal(false);
     startTransition(async () => {
       const newSession = await startWorkout(title, programId);
       setSession(newSession);
@@ -242,111 +288,340 @@ export function WorkoutRunner({
     );
   };
 
+  // =========================================================================
+  // ESTADO 1: NENHUMA SESSÃO EM ANDAMENTO -> WIDGET COMPACTO COM FILTROS & MENUS
+  // =========================================================================
   if (!session) {
-    const todayMondayIdx = jsDayToMondayIndex(new Date().getDay());
+    if (routines.length === 0) {
+      return (
+        <div className="card p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+          <div className="flex items-start gap-3">
+            <div className="w-10 h-10 rounded-xl bg-lima/25 text-foreground flex items-center justify-center shrink-0">
+              <Dumbbell size={18} strokeWidth={1.75} />
+            </div>
+            <div>
+              <h3 className="text-sm font-semibold text-foreground">
+                Nenhuma ficha cadastrada
+              </h3>
+              <p className="text-muted text-xs mt-0.5">
+                Crie sua primeira ficha para treinar com séries e cargas planejadas.
+              </p>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={() => handleStart()}
+            disabled={isPending}
+            className="btn btn-primary h-9 px-4 text-xs font-mono font-bold shrink-0"
+          >
+            <Play size={13} fill="currentColor" />
+            <span>{isPending ? "Iniciando..." : "Treino livre"}</span>
+          </button>
+        </div>
+      );
+    }
+
+    const tpl = activeRoutine?.templates?.[0];
+    const prescs = tpl?.prescriptions || [];
+    const exerciseCount = prescs.length;
+    const isTodayScheduled =
+      typeof tpl?.dayOfWeek === "number" && tpl.dayOfWeek === todayJsDay;
 
     return (
-      <div className="flex flex-col gap-4">
-        {routines.length === 0 ? (
-          <div className="card p-6 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-            <div className="flex items-start gap-4">
-              <div className="w-11 h-11 rounded-xl bg-lima/25 text-foreground flex items-center justify-center shrink-0">
-                <Dumbbell size={20} strokeWidth={1.75} />
-              </div>
-              <div>
-                <h3 className="t-h3">Nenhuma ficha cadastrada</h3>
-                <p className="text-muted text-sm mt-1">
-                  Crie sua primeira ficha para treinar com séries e cargas planejadas.
-                </p>
-              </div>
-            </div>
+      <div className="flex flex-col gap-3">
+        {/* FILTROS E MENUS COMPACTOS: Alternância "Hoje" vs "Todas as Fichas" */}
+        <div className="flex items-center justify-between gap-2">
+          <div className="inline-flex items-center p-0.5 rounded-lg bg-foreground/[0.04] border border-line text-xs font-mono">
             <button
               type="button"
-              onClick={() => handleStart()}
-              disabled={isPending}
-              className="btn btn-primary h-11 px-6 shrink-0"
+              onClick={() => setViewFilter("hoje")}
+              className={`h-7 px-3 rounded-md transition-all cursor-pointer inline-flex items-center gap-1.5 ${
+                viewFilter === "hoje"
+                  ? "bg-surface text-foreground font-semibold shadow-2xs border border-line/60"
+                  : "text-muted hover:text-foreground"
+              }`}
             >
-              <Play size={15} fill="currentColor" />
-              <span>{isPending ? "Iniciando..." : "Treino livre"}</span>
+              <span className="w-1.5 h-1.5 rounded-full bg-lima" />
+              <span>Hoje</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setViewFilter("todas")}
+              className={`h-7 px-3 rounded-md transition-all cursor-pointer inline-flex items-center gap-1.5 ${
+                viewFilter === "todas"
+                  ? "bg-surface text-foreground font-semibold shadow-2xs border border-line/60"
+                  : "text-muted hover:text-foreground"
+              }`}
+            >
+              <LayoutGrid size={12} />
+              <span>Todas ({routines.length})</span>
             </button>
           </div>
-        ) : (
-          <div className="-mx-4 sm:mx-0 overflow-x-auto sm:overflow-visible no-scrollbar snap-x snap-mandatory">
-            <div className="flex sm:grid sm:grid-cols-2 lg:grid-cols-3 gap-3 px-4 sm:px-0 pb-1">
-              {routines.map((r) => {
-                const tpl = r.templates?.[0];
-                const day = tpl?.dayOfWeek;
-                const isToday =
-                  typeof day === "number" &&
-                  jsDayToMondayIndex(day) === todayMondayIdx;
-                const count = tpl?.prescriptions?.length ?? 0;
 
-                return (
-                  <article
-                    key={r.id}
-                    className={`card card-interactive snap-start shrink-0 w-[240px] sm:w-auto p-4 flex flex-col justify-between gap-4 ${
-                      isToday ? "border-lima ring-1 ring-lima/60" : ""
-                    }`}
-                  >
-                    <div className="min-w-0">
-                      <div className="flex items-center gap-1.5">
-                        {typeof day === "number" && (
-                          <span
-                            className={`px-2 py-0.5 rounded-full text-[11px] font-mono font-semibold ${
-                              isToday
-                                ? "bg-lima text-grafite"
-                                : "bg-foreground/8 text-muted"
-                            }`}
-                          >
-                            {isToday ? "Hoje" : getWeekdayLabelPt(day, "short")}
-                          </span>
-                        )}
-                        <span className="t-data text-[11px] text-muted">
-                          {count} {count === 1 ? "exercício" : "exercícios"}
-                        </span>
-                      </div>
-                      <h3 className="font-semibold text-sm mt-2 line-clamp-2 text-foreground">
-                        {r.title}
-                      </h3>
-                    </div>
+          <button
+            type="button"
+            onClick={() => setOpenSwitchModal(true)}
+            className="text-[11px] font-mono text-muted hover:text-foreground inline-flex items-center gap-1 cursor-pointer py-1 px-2 rounded hover:bg-foreground/[0.03]"
+          >
+            <ArrowRightLeft size={12} />
+            <span>Mudar ficha</span>
+          </button>
+        </div>
 
-                    <button
-                      type="button"
-                      onClick={() => handleStart(r.id, r.title)}
-                      disabled={isPending}
-                      className="btn btn-dark h-10 w-full text-xs"
-                    >
-                      <Play size={13} fill="currentColor" />
-                      <span>{isPending ? "Iniciando..." : "Treinar"}</span>
-                    </button>
-                  </article>
-                );
-              })}
+        {/* MODO 1: VISÃO "HOJE" -> CARD SLIM, BREVE E PRECISO COM ACORDEÃO */}
+        {viewFilter === "hoje" && (
+          <article className="card p-4 sm:p-4.5 flex flex-col gap-3 border-lima/40 ring-1 ring-lima/30 transition-all">
+            {/* Linha Principal Slim */}
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div className="min-w-0 flex-1">
+                <div className="flex items-center gap-2">
+                  <span className="px-2 py-0.5 rounded text-[10px] font-mono font-bold bg-lima text-grafite">
+                    {isTodayScheduled ? "Hoje" : "Sugerido"}
+                  </span>
+                  <span className="text-xs font-mono text-muted">
+                    {todayWeekdayName} · {exerciseCount}{" "}
+                    {exerciseCount === 1 ? "exercício" : "exercícios"} · ~45 min
+                  </span>
+                </div>
+
+                <h3 className="text-base sm:text-lg font-bold text-foreground mt-1 truncate">
+                  {activeRoutine?.title}
+                </h3>
+              </div>
+
+              {/* Ações Diretas: Botão Iniciar + Acordeão Exercícios */}
+              <div className="flex items-center gap-2 shrink-0 self-end sm:self-center">
+                <button
+                  type="button"
+                  onClick={() =>
+                    setIsExercisesAccordionOpen((prev) => !prev)
+                  }
+                  aria-expanded={isExercisesAccordionOpen}
+                  aria-label="Ver exercícios prescritos"
+                  className="h-9 px-3 rounded-lg border border-line bg-surface hover:bg-foreground/[0.04] text-xs font-mono text-muted hover:text-foreground inline-flex items-center transition-all cursor-pointer"
+                >
+                  <span>
+                    {isExercisesAccordionOpen ? "Ocultar exercícios" : "Exercícios"}
+                  </span>
+                </button>
+
+                <button
+                  type="button"
+                  disabled={isPending}
+                  onClick={() =>
+                    handleStart(activeRoutine?.id, activeRoutine?.title)
+                  }
+                  className="h-9 px-4 rounded-lg bg-lima hover:brightness-105 active:scale-[0.99] text-grafite font-mono font-bold text-xs inline-flex items-center gap-1.5 shadow-sm transition-all cursor-pointer"
+                >
+                  <Play size={13} fill="currentColor" />
+                  <span>{isPending ? "Iniciando..." : "Treinar"}</span>
+                </button>
+              </div>
             </div>
+
+            {/* Acordeão de Exercícios (Fechado por padrão, abre apenas se o atleta pedir) */}
+            {isExercisesAccordionOpen && prescs.length > 0 && (
+              <div className="pt-2.5 border-t border-line flex flex-wrap gap-1.5 animate-in fade-in duration-150">
+                {prescs.map((p, idx) => (
+                  <span
+                    key={p.id || idx}
+                    className="px-2 py-0.5 rounded text-[11px] bg-foreground/[0.04] border border-line text-foreground font-mono"
+                  >
+                    {p.exerciseNamePt || p.exerciseNameEn || `Exercício ${idx + 1}`}
+                    {p.targetSets ? ` (${p.targetSets}x)` : ""}
+                  </span>
+                ))}
+              </div>
+            )}
+          </article>
+        )}
+
+        {/* MODO 2: VISÃO "TODAS AS FICHAS" -> O WIDGET DOS TREINOS ANTERIORES */}
+        {viewFilter === "todas" && (
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+            {routines.map((r) => {
+              const rTpl = r.templates?.[0];
+              const day = rTpl?.dayOfWeek;
+              const isToday =
+                typeof day === "number" &&
+                jsDayToMondayIndex(day) === todayMondayIdx;
+              const count = rTpl?.prescriptions?.length ?? 0;
+
+              return (
+                <article
+                  key={r.id}
+                  className={`card card-interactive p-4 flex flex-col justify-between gap-3.5 transition-all ${
+                    isToday ? "border-lima ring-1 ring-lima/60" : ""
+                  }`}
+                >
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-1.5">
+                      {typeof day === "number" && (
+                        <span
+                          className={`px-2 py-0.5 rounded text-[10px] font-mono font-semibold ${
+                            isToday
+                              ? "bg-lima text-grafite"
+                              : "bg-foreground/8 text-muted"
+                          }`}
+                        >
+                          {isToday ? "Hoje" : getWeekdayLabelPt(day, "short")}
+                        </span>
+                      )}
+                      <span className="t-data text-[11px] text-muted">
+                        {count} {count === 1 ? "exercício" : "exercícios"}
+                      </span>
+                    </div>
+                    <h3 className="font-semibold text-sm mt-1.5 line-clamp-2 text-foreground">
+                      {r.title}
+                    </h3>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={() => handleStart(r.id, r.title)}
+                    disabled={isPending}
+                    className="btn btn-dark h-9 w-full text-xs"
+                  >
+                    <Play size={12} fill="currentColor" />
+                    <span>{isPending ? "Iniciando..." : "Treinar"}</span>
+                  </button>
+                </article>
+              );
+            })}
           </div>
         )}
 
+        {/* FEEDBACK DE TREINO CONCLUÍDO (SE HOUVER) */}
         {isFinishedBannerOpen && (
           <div
             role="status"
-            className="p-4 rounded-xl bg-lima/20 border border-lima flex items-start gap-3"
+            className="p-3.5 rounded-xl bg-lima/20 border border-lima flex items-start gap-2.5 text-xs text-foreground"
           >
-            <CheckCircle2 size={18} className="text-profundo mt-0.5 shrink-0" />
+            <CheckCircle2 size={16} className="text-profundo mt-0.5 shrink-0" />
             <div>
-              <span className="t-label !text-accent-text">Sessão registrada</span>
-              <p className="font-semibold text-foreground text-sm mt-0.5">
-                Treino concluído com esforço nota {sessionRpe}/10.
-              </p>
-              <p className="text-xs text-muted mt-0.5">
-                Sua evolução, sequência semanal e bateria do corpo já foram atualizadas.
-              </p>
+              <span className="font-mono font-bold text-accent-text block">
+                Sessão Concluída (Nota {sessionRpe}/10)
+              </span>
+              <span className="text-muted text-[11px]">
+                Sua evolução e bateria do corpo foram atualizadas.
+              </span>
             </div>
           </div>
         )}
+
+        {/* MODAL PARA TROCAR FICHA (VIA MODALPORTAL) */}
+        <ModalPortal
+          open={openSwitchModal}
+          onClose={() => setOpenSwitchModal(false)}
+          ariaLabel="Trocar Ficha de Treino"
+          maxWidthClass="sm:max-w-md"
+        >
+          <div className="w-full bg-surface border border-line rounded-2xl shadow-2xl p-5 flex flex-col gap-3.5 max-h-[85dvh] overflow-y-auto">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <span className="t-label !text-accent-text">Fichas de Treino</span>
+                <h2 className="t-h3 mt-0.5">Escolha uma ficha</h2>
+              </div>
+              <button
+                type="button"
+                onClick={() => setOpenSwitchModal(false)}
+                aria-label="Fechar"
+                className="w-7 h-7 rounded-lg flex items-center justify-center text-muted hover:text-foreground hover:bg-foreground/5 cursor-pointer shrink-0"
+              >
+                <X size={15} />
+              </button>
+            </div>
+
+            <div className="divide-y divide-line">
+              {routines.map((r) => {
+                const rTpl = r.templates?.[0];
+                const rDay = rTpl?.dayOfWeek;
+                const isDayToday =
+                  typeof rDay === "number" && rDay === todayJsDay;
+                const count = rTpl?.prescriptions?.length ?? 0;
+
+                return (
+                  <div
+                    key={r.id}
+                    className="py-2.5 flex items-center justify-between gap-2"
+                  >
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center gap-1.5">
+                        {typeof rDay === "number" && (
+                          <span
+                            className={`px-1.5 py-0.2 rounded text-[9px] font-mono font-bold ${
+                              isDayToday
+                                ? "bg-lima text-grafite"
+                                : "bg-foreground/10 text-muted"
+                            }`}
+                          >
+                            {isDayToday ? "Hoje" : getWeekdayLabelPt(rDay, "short")}
+                          </span>
+                        )}
+                        <span className="text-[10px] font-mono text-muted">
+                          {count} ex.
+                        </span>
+                      </div>
+                      <p className="font-semibold text-xs text-foreground mt-0.5 truncate">
+                        {r.title}
+                      </p>
+                    </div>
+
+                    <div className="flex items-center gap-1.5 shrink-0">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setSelectedRoutineId(r.id);
+                          setViewFilter("hoje");
+                          setOpenSwitchModal(false);
+                        }}
+                        className="btn btn-ghost h-8 px-2.5 text-[11px] font-mono"
+                      >
+                        Ver
+                      </button>
+                      <button
+                        type="button"
+                        disabled={isPending}
+                        onClick={() => handleStart(r.id, r.title)}
+                        className="btn btn-primary h-8 px-3 text-[11px] font-mono font-bold inline-flex items-center gap-1"
+                      >
+                        <Play size={11} fill="currentColor" />
+                        <span>Treinar</span>
+                      </button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+
+            <div className="pt-2 border-t border-line flex items-center justify-between text-xs">
+              <button
+                type="button"
+                disabled={isPending}
+                onClick={() => handleStart()}
+                className="btn btn-ghost h-8 px-2 text-[11px] font-mono text-muted hover:text-foreground inline-flex items-center gap-1"
+              >
+                <Flame size={13} className="text-lima" />
+                <span>Treino livre</span>
+              </button>
+
+              <Link
+                href="/treinos/novo"
+                className="btn btn-ghost h-8 px-2 text-[11px] font-mono text-accent-text inline-flex items-center gap-1"
+              >
+                <Plus size={13} />
+                <span>Nova Ficha</span>
+              </Link>
+            </div>
+          </div>
+        </ModalPortal>
       </div>
     );
   }
 
+  // =========================================================================
+  // ESTADO 2: SESSÃO EM ANDAMENTO -> RUNNER ATIVO (TIMER, SÉRIES, DESCANSO)
+  // =========================================================================
   const normalizedExercises = sessionExercises.map((ex) => ({
     ...ex,
     resolvedSets:
@@ -374,29 +649,30 @@ export function WorkoutRunner({
       : 0;
 
   return (
-    <div className="card p-5 sm:p-6 flex flex-col gap-5">
+    <div className="card p-4 sm:p-5 flex flex-col gap-4">
       {/* Cabeçalho do Modo Foco */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-line pb-4">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-line pb-3.5">
         <div className="min-w-0">
           <div className="flex items-center gap-2 flex-wrap">
-            <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-mono font-semibold bg-lima text-grafite">
-              <span className="w-2 h-2 rounded-full bg-grafite animate-pulse" />
+            <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[11px] font-mono font-semibold bg-lima text-grafite">
+              <span className="w-1.5 h-1.5 rounded-full bg-grafite animate-pulse" />
               EM EXECUÇÃO
             </span>
             <span className="t-data text-xs text-muted">
               {completedSetsCount}/{totalSetsCount} séries ({progressPercent}%)
             </span>
           </div>
-          <h3 className="t-h2 mt-2 truncate">{session.title}</h3>
-          <p className="t-aux text-muted mt-0.5">
-            Toque em qualquer movimento para abrir o passo a passo ilustrado.
-          </p>
+          <h3 className="text-base sm:text-lg font-bold text-foreground mt-1 truncate">
+            {session.title}
+          </h3>
         </div>
 
-        <div className="flex items-center justify-between sm:justify-end gap-4 shrink-0">
+        <div className="flex items-center justify-between sm:justify-end gap-3 shrink-0">
           <div className="sm:text-right">
-            <span className="t-label block">Tempo</span>
-            <p className="t-data text-2xl sm:text-3xl font-semibold text-foreground">
+            <span className="text-[10px] font-mono uppercase tracking-wider text-muted block">
+              Tempo
+            </span>
+            <p className="t-data text-xl sm:text-2xl font-bold text-foreground leading-none">
               {elapsedDisplay}
             </p>
           </div>
@@ -406,15 +682,15 @@ export function WorkoutRunner({
             disabled={isPending}
             title="Descartar sessão e trocar ficha"
             aria-label="Descartar sessão em andamento"
-            className="btn btn-ghost h-9 px-2.5 text-xs font-mono text-muted hover:text-foreground"
+            className="btn btn-ghost h-8 px-2 text-xs font-mono text-muted hover:text-foreground"
           >
-            <XCircle size={15} />
+            <XCircle size={14} />
             <span className="hidden sm:inline">Trocar</span>
           </button>
         </div>
       </div>
 
-      {/* Barra de progresso da sessão (somente para fichas com séries prescritas) */}
+      {/* Barra de progresso da sessão */}
       {totalSetsCount > 0 && (
         <div className="w-full h-1.5 bg-foreground/10 rounded-full overflow-hidden">
           <div
@@ -429,39 +705,41 @@ export function WorkoutRunner({
         <div
           role="timer"
           aria-live="polite"
-          className="sticky top-16 z-20 rounded-xl bg-noite text-osso p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-lg border border-lima/30"
+          className="sticky top-16 z-20 rounded-xl bg-noite text-osso p-3.5 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 shadow-lg border border-lima/30"
         >
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-lg bg-white/10 text-lima flex items-center justify-center shrink-0">
-              <Timer size={20} />
+          <div className="flex items-center gap-2.5">
+            <div className="w-8 h-8 rounded-lg bg-white/10 text-lima flex items-center justify-center shrink-0">
+              <Timer size={16} />
             </div>
             <div>
-              <span className="t-label !text-nevoa">Recuperação entre séries</span>
-              <p className="t-data text-2xl text-lima font-semibold">
+              <span className="text-[10px] font-mono uppercase tracking-wider text-nevoa block">
+                Descanso
+              </span>
+              <p className="t-data text-xl text-lima font-bold leading-none mt-0.5">
                 {formatDuration(restRemaining)}
               </p>
             </div>
           </div>
 
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1.5">
             <button
               type="button"
               onClick={() => adjustRest(-15)}
-              className="h-9 px-3 rounded-md border border-white/15 text-xs font-mono text-osso hover:bg-white/10 transition-colors cursor-pointer"
+              className="h-8 px-2.5 rounded-md border border-white/15 text-xs font-mono text-osso hover:bg-white/10 transition-colors cursor-pointer"
             >
               -15s
             </button>
             <button
               type="button"
               onClick={() => adjustRest(15)}
-              className="h-9 px-3 rounded-md border border-white/15 text-xs font-mono text-osso hover:bg-white/10 transition-colors cursor-pointer"
+              className="h-8 px-2.5 rounded-md border border-white/15 text-xs font-mono text-osso hover:bg-white/10 transition-colors cursor-pointer"
             >
               +15s
             </button>
             <button
               type="button"
               onClick={() => setRestRemaining(0)}
-              className="h-9 px-3.5 rounded-md bg-lima text-grafite text-xs font-mono font-semibold hover:brightness-95 transition-all cursor-pointer"
+              className="h-8 px-3 rounded-md bg-lima text-grafite text-xs font-mono font-semibold hover:brightness-95 transition-all cursor-pointer"
             >
               Pular
             </button>
@@ -469,150 +747,141 @@ export function WorkoutRunner({
         </div>
       )}
 
-      {/* Movimentos Prescritos ou Modo Atividade Livre (corrida, futsal, ciclismo, etc.) */}
+      {/* Movimentos Prescritos ou Modo Atividade Livre */}
       {normalizedExercises.length === 0 ? (
-        <div className="rounded-xl border border-line bg-foreground/[0.02] p-5 flex items-center justify-between gap-4">
-          <div className="space-y-1">
-            <span className="t-label !text-accent-text">
-              Cronômetro de Atividade Livre
+        <div className="rounded-xl border border-line bg-foreground/[0.02] p-4 flex items-center justify-between gap-3 text-xs">
+          <div>
+            <span className="font-semibold text-foreground block">
+              Atividade Livre em Execução
             </span>
-            <p className="text-sm text-foreground font-medium">
-              Seu tempo está sendo contabilizado em segundo plano mesmo se você sair da tela.
-            </p>
-            <p className="text-xs text-muted">
-              Ao terminar, selecione o esforço do treino abaixo e toque em Concluir Treino.
-            </p>
+            <span className="text-muted">
+              Ao concluir, selecione o esforço abaixo e clique em Finalizar.
+            </span>
           </div>
         </div>
       ) : (
-        <div className="flex flex-col gap-3">
-          <div className="flex items-center justify-between gap-2 flex-wrap">
-            <span className="t-label">Exercícios do seu Treino</span>
-            <span className="text-[11px] font-mono text-muted">
-              Dica: toque no nome do exercício para assistir ao vídeo de como fazer
-            </span>
-          </div>
+        <div className="flex flex-col gap-2.5">
           {normalizedExercises.map((ex, exIndex) => (
-          <div
-            key={ex.sessionExerciseId ?? ex.id}
-            className="rounded-xl border border-line p-4 bg-foreground/[0.02] flex flex-col gap-3"
-          >
-            <div className="flex justify-between items-start gap-2">
-              <div className="flex items-center gap-2.5 min-w-0">
-                <span className="t-data text-xs px-2 py-0.5 rounded bg-surface border border-line text-accent-text shrink-0">
-                  {String(exIndex + 1).padStart(2, "0")}
-                </span>
-                <div className="min-w-0">
-                  <p className="font-semibold text-sm text-foreground">
-                    <ExerciseLink
-                      exerciseId={ex.id}
-                      className="inline-flex items-center gap-1.5"
-                    >
-                      <span>{ex.namePt || ex.nameEn}</span>
-                      <Info size={13} className="text-muted shrink-0" />
-                    </ExerciseLink>
-                  </p>
-                  <p className="t-aux text-muted">
-                    {ex.secondaryMuscles?.[0] || "Treinamento"} ·{" "}
-                    {ex.resolvedSets.length}{" "}
-                    {ex.resolvedSets.length === 1 ? "série" : "séries"}
-                  </p>
+            <div
+              key={ex.sessionExerciseId ?? ex.id}
+              className="rounded-xl border border-line p-3 bg-foreground/[0.015] flex flex-col gap-2.5"
+            >
+              <div className="flex justify-between items-start gap-2">
+                <div className="flex items-center gap-2 min-w-0">
+                  <span className="text-[11px] font-mono font-bold px-1.5 py-0.2 rounded bg-surface border border-line text-accent-text shrink-0">
+                    {String(exIndex + 1).padStart(2, "0")}
+                  </span>
+                  <div className="min-w-0">
+                    <p className="font-semibold text-xs sm:text-sm text-foreground truncate">
+                      <ExerciseLink
+                        exerciseId={ex.id}
+                        className="inline-flex items-center gap-1 hover:underline"
+                      >
+                        <span>{ex.namePt || ex.nameEn}</span>
+                        <Info size={12} className="text-muted shrink-0" />
+                      </ExerciseLink>
+                    </p>
+                    <p className="text-[11px] text-muted">
+                      {ex.secondaryMuscles?.[0] || "Treinamento"} ·{" "}
+                      {ex.resolvedSets.length}{" "}
+                      {ex.resolvedSets.length === 1 ? "série" : "séries"}
+                    </p>
+                  </div>
                 </div>
               </div>
+
+              {/* Séries em grade tabular compacta */}
+              <div className="flex flex-col gap-1.5">
+                {ex.resolvedSets.map((set) => {
+                  const st = setStateMap[set.id] ?? {
+                    isCompleted: set.isCompleted,
+                    weightKg: set.weightKg ?? 0,
+                    reps: set.reps ?? 10,
+                  };
+                  return (
+                    <div
+                      key={set.id}
+                      className={`grid grid-cols-12 items-center gap-1.5 rounded-lg border px-2 py-1 transition-colors ${
+                        st.isCompleted
+                          ? "border-lima/70 bg-lima/10"
+                          : "border-line bg-surface"
+                      }`}
+                    >
+                      <span className="col-span-2 text-[11px] font-mono font-semibold text-muted">
+                        S{set.setNumber}
+                      </span>
+
+                      <div className="col-span-4 flex items-center gap-1">
+                        <input
+                          type="number"
+                          min={0}
+                          step={0.5}
+                          value={st.weightKg}
+                          onChange={(e) =>
+                            updateSetField(set.id, "weightKg", e.target.value)
+                          }
+                          aria-label={`Carga série ${set.setNumber}`}
+                          className="w-full h-8 px-1.5 rounded border border-line bg-background text-foreground text-xs text-center focus:outline-none focus:border-profundo"
+                        />
+                        <span className="text-[10px] font-mono text-muted">kg</span>
+                      </div>
+
+                      <div className="col-span-3 flex items-center gap-1">
+                        <input
+                          type="number"
+                          min={1}
+                          value={st.reps}
+                          onChange={(e) =>
+                            updateSetField(set.id, "reps", e.target.value)
+                          }
+                          aria-label={`Reps série ${set.setNumber}`}
+                          className="w-full h-8 px-1.5 rounded border border-line bg-background text-foreground text-xs text-center focus:outline-none focus:border-profundo"
+                        />
+                        <span className="text-[10px] font-mono text-muted">r</span>
+                      </div>
+
+                      <div className="col-span-3 flex justify-end">
+                        <button
+                          type="button"
+                          aria-pressed={st.isCompleted}
+                          onClick={() => toggleSet(set.id)}
+                          className={`h-8 w-full rounded border text-xs font-mono flex items-center justify-center gap-1 transition-all cursor-pointer ${
+                            st.isCompleted
+                              ? "bg-lima border-lima text-grafite font-bold"
+                              : "border-line bg-background text-muted hover:text-foreground hover:border-mineral"
+                          }`}
+                        >
+                          <Check size={12} strokeWidth={2.8} />
+                          <span className="text-[10px]">
+                            {st.isCompleted ? "Feita" : "OK"}
+                          </span>
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
             </div>
-
-            {/* Grade tabular de séries reais com edição rápida de carga/reps + check 44px */}
-            <div className="flex flex-col gap-2">
-              {ex.resolvedSets.map((set) => {
-                const st = setStateMap[set.id] ?? {
-                  isCompleted: set.isCompleted,
-                  weightKg: set.weightKg ?? 0,
-                  reps: set.reps ?? 10,
-                };
-                return (
-                  <div
-                    key={set.id}
-                    className={`grid grid-cols-12 items-center gap-2 rounded-lg border px-2.5 py-1.5 transition-colors ${
-                      st.isCompleted
-                        ? "border-lima/70 bg-lima/10"
-                        : "border-line bg-surface"
-                    }`}
-                  >
-                    <span className="col-span-2 t-data text-xs font-semibold text-muted">
-                      Série {set.setNumber}
-                    </span>
-
-                    <div className="col-span-4 flex items-center gap-1">
-                      <input
-                        type="number"
-                        min={0}
-                        step={0.5}
-                        value={st.weightKg}
-                        onChange={(e) =>
-                          updateSetField(set.id, "weightKg", e.target.value)
-                        }
-                        aria-label={`Carga da série ${set.setNumber} em kg`}
-                        className="w-full h-9 px-2 rounded-md border border-line bg-background text-foreground t-data text-xs text-center focus:outline-none focus:border-profundo"
-                      />
-                      <span className="text-[11px] font-mono text-muted">kg</span>
-                    </div>
-
-                    <div className="col-span-3 flex items-center gap-1">
-                      <input
-                        type="number"
-                        min={1}
-                        value={st.reps}
-                        onChange={(e) =>
-                          updateSetField(set.id, "reps", e.target.value)
-                        }
-                        aria-label={`Repetições da série ${set.setNumber}`}
-                        className="w-full h-9 px-2 rounded-md border border-line bg-background text-foreground t-data text-xs text-center focus:outline-none focus:border-profundo"
-                      />
-                      <span className="text-[11px] font-mono text-muted">reps</span>
-                    </div>
-
-                    <div className="col-span-3 flex justify-end">
-                      <button
-                        type="button"
-                        aria-pressed={st.isCompleted}
-                        onClick={() => toggleSet(set.id)}
-                        className={`h-11 w-full rounded-lg border text-xs font-mono flex items-center justify-center gap-1 transition-all cursor-pointer ${
-                          st.isCompleted
-                            ? "bg-lima border-lima text-grafite font-semibold"
-                            : "border-line bg-background text-muted hover:text-foreground hover:border-mineral"
-                        }`}
-                      >
-                        <Check size={14} strokeWidth={2.5} />
-                        <span className="hidden sm:inline">
-                          {st.isCompleted ? "Feita" : "OK"}
-                        </span>
-                      </button>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-        ))}
+          ))}
         </div>
       )}
 
       {/* Esforço + Finalização */}
-      <div className="pt-4 border-t border-line flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-        <div className="flex flex-col gap-1.5">
-          <span className="t-label">
-            Como você avalia o esforço deste treino? (6 = Moderado · 10 = Máximo)
+      <div className="pt-3 border-t border-line flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+        <div className="flex items-center gap-2">
+          <span className="text-xs text-muted font-mono">
+            Esforço:
           </span>
-          <div className="flex items-center gap-1.5">
+          <div className="flex items-center gap-1">
             {[6, 7, 8, 9, 10].map((rpeValue) => (
               <button
                 key={rpeValue}
                 type="button"
                 onClick={() => setSessionRpe(rpeValue)}
                 aria-pressed={sessionRpe === rpeValue}
-                className={`h-10 w-10 rounded-md border t-data text-xs transition-colors cursor-pointer ${
+                className={`h-8 w-8 rounded-md border text-xs font-mono transition-colors cursor-pointer ${
                   sessionRpe === rpeValue
-                    ? "bg-foreground text-background border-foreground font-semibold"
+                    ? "bg-foreground text-background border-foreground font-bold"
                     : "border-line bg-surface text-muted hover:text-foreground"
                 }`}
               >
@@ -626,10 +895,10 @@ export function WorkoutRunner({
           type="button"
           onClick={handleFinish}
           disabled={isPending}
-          className="btn btn-primary h-11 px-6"
+          className="btn btn-primary h-9 px-5 text-xs font-mono font-bold"
         >
-          <Check size={16} strokeWidth={2.2} />
-          <span>{isPending ? "Registrando..." : "Concluir Treino"}</span>
+          <Check size={14} strokeWidth={2.2} />
+          <span>{isPending ? "Salvando..." : "Concluir Treino"}</span>
         </button>
       </div>
     </div>

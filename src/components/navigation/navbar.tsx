@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef, Suspense } from "react";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import {
   SignInButton,
   SignUpButton,
@@ -18,19 +18,19 @@ import { getSmartNotifications } from "@/actions/notifications";
 import type { RescheduleProposal } from "@/core/performance/weekly-rescheduler";
 import { NotificationBell } from "@/components/navigation/notification-bell";
 import { QuickActivityLauncher } from "@/components/home/quick-activity-modal";
-import { ConditionArrowBadge } from "@/components/ui/condition-arrow-badge";
-import { resolveConditionArrow } from "@/core/performance/condition-arrow";
 import { resolveUserRole } from "@/core/auth/rbac";
 import { buildContextualGreeting } from "@/core/navigation/greeting";
 import {
   Shield,
   Settings,
-  PlusCircle,
   Search,
   ChevronDown,
   Flame,
   Sun,
   Moon,
+  History,
+  User,
+  Users,
 } from "lucide-react";
 
 function RoleAccessMenu() {
@@ -148,6 +148,7 @@ function HeaderGreeting({ fallbackName }: { fallbackName?: string | null }) {
 }
 
 export function Navbar() {
+  const router = useRouter();
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [snapshot, setSnapshot] = useState<GlobalSearchSnapshot | null>(null);
   const [notifications, setNotifications] = useState<RescheduleProposal[]>([]);
@@ -262,24 +263,15 @@ export function Navbar() {
             </button>
           </div>
 
-          {/* Direita: Registrar Atividade + Nova Ficha + Notificações (Sininho) + Streak + Perfil */}
+          {/* Direita: Registrar Atividade + Notificações (Sininho) + Streak + Perfil */}
           <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
-            {/* Registrar Atividade ao lado de Nova Ficha (montado no mobile para o botão + da Bottom Pill) */}
+            {/* Registrar Atividade (montado no mobile para o botão + da Bottom Pill) */}
             <QuickActivityLauncher
               variant="secondary"
               compact={true}
               hideTriggerOnMobile={true}
               athleteProfile={snapshot?.athleteModalityProfile}
             />
-
-            <Link
-              href="/treinos/novo"
-              aria-label="Criar nova ficha de treino"
-              className="hidden sm:inline-flex h-9 px-2.5 sm:px-3 rounded-lg bg-lima text-grafite text-xs font-mono font-bold hover:brightness-95 transition-all inline-flex items-center gap-1.5 shrink-0"
-            >
-              <PlusCircle size={15} strokeWidth={2} />
-              <span className="hidden sm:inline">Nova Ficha</span>
-            </Link>
 
             {/* Sininho de Notificações com Inteligência Adaptativa */}
             <NotificationBell proposals={notifications} />
@@ -337,16 +329,7 @@ export function Navbar() {
                 <Show when="signed-in">
                   <div className="flex items-center gap-1.5">
                     <RoleAccessMenu />
-                    <div
-                      className="relative inline-flex items-center"
-                      title={
-                        resolveConditionArrow({
-                          reservePercent: snapshot?.eaReservePercent ?? 82,
-                          availableReserveEa: snapshot?.availableReserveEa,
-                          personalCapacityEa: snapshot?.personalCapacityEa,
-                        }).descriptionPt
-                      }
-                    >
+                    <div className="relative inline-flex items-center">
                       <UserButton
                         appearance={{
                           elements: {
@@ -357,6 +340,23 @@ export function Navbar() {
                         }}
                       >
                         <UserButton.MenuItems>
+                          <UserButton.Action
+                            label="Meu Perfil"
+                            labelIcon={<User size={14} className="text-accent-text" />}
+                            onClick={() => router.push("/perfil")}
+                          />
+                          {snapshot?.hasActiveCommunity && (
+                            <UserButton.Action
+                              label="Comunidade do Team"
+                              labelIcon={<Users size={14} className="text-accent-text" />}
+                              onClick={() => router.push("/comunidade")}
+                            />
+                          )}
+                          <UserButton.Action
+                            label="Histórico de Atividades"
+                            labelIcon={<History size={14} className="text-accent-text" />}
+                            onClick={() => router.push("/evolucao?tab=historico")}
+                          />
                           <UserButton.Action
                             label={
                               theme === "dark"
@@ -374,13 +374,6 @@ export function Navbar() {
                           />
                         </UserButton.MenuItems>
                       </UserButton>
-                      <ConditionArrowBadge
-                        reservePercent={snapshot?.eaReservePercent ?? 82}
-                        availableReserveEa={snapshot?.availableReserveEa}
-                        personalCapacityEa={snapshot?.personalCapacityEa}
-                        size="sm"
-                        className="absolute -bottom-1 -right-1 pointer-events-none z-10"
-                      />
                     </div>
                   </div>
                 </Show>

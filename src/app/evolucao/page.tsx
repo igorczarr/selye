@@ -10,9 +10,11 @@ export const instant = false;
 
 const VALID_TABS = new Set<EvolutionTab>([
   "hoje",
+  "ritmo",
   "carga",
   "forca",
   "consistencia",
+  "historico",
 ]);
 
 async function EvolutionLoader({

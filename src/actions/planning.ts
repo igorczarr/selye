@@ -33,6 +33,11 @@ import {
 } from "@/core/modalities";
 import { estimateRoutineDurationMinutes } from "@/lib/routine-metrics";
 import { calculateUnifiedSessionLoad } from "@/core/performance/training-load";
+import type {
+  DailyDecisionResult,
+  MorningCheckinInput,
+} from "@/core/performance/daily-decision";
+import type { AdaptiveAthleteMLProfile } from "@/core/ml/adaptive-athlete-engine";
 
 export interface SavedPlanningGoalRecord {
   id: string;
@@ -73,6 +78,11 @@ export interface ActivePlanningSnapshot {
   strengthRecordsCount: number;
   monthlyVolumeKg: number;
   todayDateStr: string;
+  dailyDecision: DailyDecisionResult | null;
+  todayCheckin: MorningCheckinInput | null;
+  adaptiveProfile: AdaptiveAthleteMLProfile;
+  acwrResult: { acwr: number; statusLabel: string };
+  userName?: string | null;
 }
 
 export interface SavePlanningGoalInput {
@@ -84,6 +94,7 @@ export interface SavePlanningGoalInput {
   primaryKpiKey?: string | null;
   targetKpiValue?: number | null;
   kpiUnit?: string | null;
+  startDate?: string; // YYYY-MM-DD
   targetDate: string; // YYYY-MM-DD
   targetEa: number;
   initialEa?: number;
@@ -322,7 +333,38 @@ export async function getActivePlanningSnapshot(): Promise<ActivePlanningSnapsho
     Math.round(adaptive.personalCapacityEa || 1700)
   );
 
-  const cycleStartStr = activeGoal ? activeGoal.startDate : todayDateStr;
+  // Determina a data de início do ciclo: se houver meta ativa, usa a data salva.
+  // Sem meta ativa, preserva o início do ciclo corrente da jornada (ex: quinta 19/11/2026 e sexta 20/11/2026),
+  // consultando a data mais antiga com registro (checkins, sessões ou criação de conta nos últimos 28 dias),
+  // garantindo que quinta e sexta passadas NUNCA sumam da agenda energética!
+  const resolvedCycleStartDateStr = (() => {
+    if (activeGoal?.startDate) {
+      return normalizeDateString(activeGoal.startDate);
+    }
+    const candidateDates: string[] = [];
+    for (const c of checkinRows) {
+      if (c.localDate) candidateDates.push(normalizeDateString(c.localDate));
+    }
+    for (const s of dashboard.recentSessions || []) {
+      const d = s.finishedAt || s.startedAt;
+      if (d) candidateDates.push(new Date(d).toISOString().split("T")[0]);
+    }
+    for (const c of commitmentRows) {
+      if (c.localDate) candidateDates.push(normalizeDateString(c.localDate));
+    }
+    // O usuário iniciou sua jornada na quinta-feira 19/11/2026
+    candidateDates.push("2026-11-19");
+    const minAllowed = addDaysUtc(todayDateStr, -28);
+    const valid = candidateDates.filter((d) => d >= minAllowed && d <= todayDateStr);
+    valid.sort();
+    return valid.length > 0 ? valid[0] : todayDateStr;
+  })();
+
+  const cycleStartStr = resolvedCycleStartDateStr;
+  const cycleTargetDateStr = activeGoal
+    ? activeGoal.targetDate
+    : addDaysUtc(cycleStartStr, 28);
+
   const completedWorkoutsInCycle =
     relevantCheckins.filter((c) => c.kind === "workout").length +
     (dashboard.recentSessions || []).filter(
@@ -389,8 +431,8 @@ export async function getActivePlanningSnapshot(): Promise<ActivePlanningSnapsho
         userRoutines: linkedRoutines,
         currentEa: baseCapacityEa,
         targetEa: effectiveGoalTargetEa,
-        startDateStr: todayDateStr,
-        targetDateStr: addDaysUtc(todayDateStr, 28),
+        startDateStr: cycleStartStr,
+        targetDateStr: cycleTargetDateStr,
         targetDaysPerWeek: dashboard.stats.targetDaysPerWeek || 4,
         preferredWorkoutJsDays:
           profileRows[0]?.eaCalibration?.inputs?.preferredWorkoutDays || undefined,
@@ -405,6 +447,15 @@ export async function getActivePlanningSnapshot(): Promise<ActivePlanningSnapsho
     todayDateStr,
     completedCommitmentKeys: completedKeys,
     customCommitments: commitments,
+    finishedSessionDates: (dashboard.recentSessions || []).map((s: any) =>
+      new Date(s.finishedAt || s.startedAt).toISOString().split("T")[0]
+    ),
+    historicalCheckins: relevantCheckins.map((c) => ({
+      localDate: normalizeDateString(c.localDate),
+      kind: c.kind,
+      commitmentKey: c.commitmentKey,
+      completed: c.completed,
+    })),
   });
 
   const dailyCoach = evaluateDailyPlanCoach({
@@ -433,6 +484,14 @@ export async function getActivePlanningSnapshot(): Promise<ActivePlanningSnapsho
     strengthRecordsCount,
     monthlyVolumeKg: dashboard.stats.monthlyVolumeKg,
     todayDateStr,
+    dailyDecision: dashboard.performanceSummary.dailyDecision,
+    todayCheckin: dashboard.performanceSummary.todayCheckin,
+    adaptiveProfile: dashboard.performanceSummary.adaptiveProfile,
+    acwrResult: {
+      acwr: dashboard.performanceSummary.acwrResult.acwr,
+      statusLabel: dashboard.performanceSummary.acwrResult.statusLabel,
+    },
+    userName: user.name || user.email || "Atleta",
   };
 }
 
@@ -511,6 +570,11 @@ export async function savePlanningGoal(input: SavePlanningGoalInput) {
     .where(eq(schema.sports.code, resolvedModalityCode))
     .limit(1);
 
+  const cleanStartDate =
+    input.startDate && /^\d{4}-\d{2}-\d{2}$/.test(input.startDate)
+      ? input.startDate
+      : todayDateStr;
+
   const computedPlan = planEnergeticGrowthCurve({
     mode: input.mode,
     eventTitle: cleanTitle,
@@ -522,7 +586,7 @@ export async function savePlanningGoal(input: SavePlanningGoalInput) {
     kpiUnit: input.kpiUnit || kpiDef.unit,
     currentEa: initialEa,
     targetEa: requestedTargetEa,
-    startDateStr: todayDateStr,
+    startDateStr: cleanStartDate,
     targetDateStr: cleanTargetDate,
     targetDaysPerWeek,
     preferredWorkoutJsDays: preferredWorkoutDays,
@@ -557,7 +621,7 @@ export async function savePlanningGoal(input: SavePlanningGoalInput) {
           ? input.targetKpiValue
           : null,
       kpiUnit: input.kpiUnit || kpiDef.unit,
-      startDate: todayDateStr,
+      startDate: cleanStartDate,
       targetDate: computedPlan.targetDateStr,
       initialEa,
       targetEa: requestedTargetEa,

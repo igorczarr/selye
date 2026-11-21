@@ -24,13 +24,21 @@ import {
   AlertTriangle,
   Smartphone,
   TrendingUp,
+  History,
 } from "lucide-react";
 
-export type EvolutionTab = "hoje" | "carga" | "forca" | "consistencia";
+export type EvolutionTab =
+  | "hoje"
+  | "ritmo"
+  | "carga"
+  | "forca"
+  | "consistencia"
+  | "historico";
 
 const TABS: { id: EvolutionTab; label: string; icon: typeof Activity }[] = [
   { id: "hoje", label: "Hoje", icon: Activity },
-  { id: "carga", label: "Carga", icon: TrendingUp },
+  { id: "ritmo", label: "Ritmo", icon: TrendingUp },
+  { id: "historico", label: "Histórico", icon: History },
   { id: "forca", label: "Força", icon: Award },
   { id: "consistencia", label: "Consistência", icon: Calendar },
 ];
@@ -638,8 +646,8 @@ export function EvolutionHub({
         </div>
       )}
 
-      {/* ================= ABA 2: CARGA (GRÁFICO 28 DIAS + HISTÓRICO LADO A LADO) ================= */}
-      {activeTab === "carga" && (
+      {/* ================= ABA 2: RITMO & CARGA (GRÁFICO 28 DIAS + HISTÓRICO LADO A LADO) ================= */}
+      {(activeTab === "carga" || activeTab === "ritmo") && (
         <div className="bento-grid items-start">
           <section className="col-span-12 xl:col-span-7 card p-5 sm:p-6 flex flex-col gap-4">
             <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-2">
@@ -807,6 +815,95 @@ export function EvolutionHub({
             )}
           </section>
         </div>
+      )}
+
+      {/* ================= ABA DEDICADA: HISTÓRICO DE ATIVIDADES ================= */}
+      {activeTab === "historico" && (
+        <section className="card p-5 sm:p-6 flex flex-col gap-4">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div>
+              <span className="t-label !text-accent-text">Registro & Consumo de Energia</span>
+              <h2 className="t-h2 mt-0.5">
+                Histórico de Atividades ({filteredWorkouts.length})
+              </h2>
+              <p className="text-xs text-muted mt-0.5">
+                Extrato detalhado de todas as suas sessões com carga interna, percepção de esforço e energia do corpo (-EA).
+              </p>
+            </div>
+
+            <div
+              role="group"
+              aria-label="Filtrar período"
+              className="flex bg-background border border-line rounded-lg p-1 self-start"
+            >
+              {(
+                [
+                  { id: "week", label: "7 dias" },
+                  { id: "month", label: "30 dias" },
+                  { id: "quarter", label: "90 dias" },
+                  { id: "year", label: "1 ano" },
+                ] as const
+              ).map((p) => (
+                <button
+                  key={p.id}
+                  type="button"
+                  aria-pressed={period === p.id}
+                  onClick={() => setPeriod(p.id)}
+                  className={`px-3 py-1 rounded-md text-xs font-mono font-semibold cursor-pointer ${
+                    period === p.id
+                      ? "bg-foreground text-background"
+                      : "text-muted hover:text-foreground"
+                  }`}
+                >
+                  {p.label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {filteredWorkouts.length === 0 ? (
+            <div className="rounded-xl border border-dashed border-line p-8 text-center space-y-2">
+              <p className="text-sm font-medium text-foreground">
+                Nenhuma sessão concluída neste período
+              </p>
+              <p className="text-xs text-muted max-w-md mx-auto">
+                Registre uma corrida, pedal, treino de musculação ou qualquer esporte na tela inicial ou clique em Nova Ficha para começar.
+              </p>
+            </div>
+          ) : (
+            <div className="divide-y divide-line">
+              {filteredWorkouts.map((w) => (
+                <div
+                  key={w.id}
+                  className="py-3.5 flex items-center justify-between gap-3 text-sm hover:bg-foreground/[0.01] px-2 rounded-lg transition-colors"
+                >
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-2">
+                      <p className="font-semibold text-foreground truncate">
+                        {w.title}
+                      </p>
+                      <span className="px-2 py-0.5 rounded text-[10px] font-mono bg-foreground/[0.05] text-muted">
+                        {w.modalityLabel}
+                      </span>
+                    </div>
+                    <p className="t-aux text-muted mt-0.5">
+                      {w.modalityLabel} · Esforço {w.rpeSession || 8}/10 ·{" "}
+                      <span className="font-mono text-accent-text font-semibold">
+                        -{w.loadUa} EA
+                      </span>
+                    </p>
+                  </div>
+                  <span className="t-data text-xs text-muted shrink-0">
+                    {new Date(w.finishedAt || w.startedAt).toLocaleDateString(
+                      "pt-BR",
+                      { day: "2-digit", month: "short", year: "numeric" }
+                    )}
+                  </span>
+                </div>
+              ))}
+            </div>
+          )}
+        </section>
       )}
 
       {/* ================= ABA 3: KPIS DA MODALIDADE + FORÇA / PRS ================= */}

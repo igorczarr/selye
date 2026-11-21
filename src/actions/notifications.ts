@@ -19,6 +19,7 @@ import {
 } from "@/core/notifications/notification-templates";
 import type { ProactivePlanAlert } from "@/core/planning/daily-plan-coach";
 import { buildCoachAlerts, type CoachAlert } from "@/core/notifications/coach-alerts";
+import { getLocalTodayDateStr, getLocalHour } from "@/lib/date";
 
 export interface StoredNotificationRecord {
   id: string;
@@ -353,11 +354,8 @@ export async function getSmartNotificationFeed(): Promise<SmartNotificationFeed>
       .orderBy(desc(schema.notifications.createdAt))
       .limit(25);
 
-    const todayStr = new Date().toISOString().split("T")[0];
-    const todayBr = new Date(`${todayStr}T12:00:00Z`).toLocaleDateString(
-      "pt-BR",
-      { day: "2-digit", month: "2-digit" }
-    );
+    const todayStr = getLocalTodayDateStr();
+    const currentHour = getLocalHour();
 
     if (rows.length === 0) {
       const welcome = buildNotificationEventPayload("welcome_onboarding", {
@@ -388,15 +386,21 @@ export async function getSmartNotificationFeed(): Promise<SmartNotificationFeed>
       }
     }
 
-    // Disparo automático do Panorama Diário (1× por dia) via Resend se ainda não enviado hoje
-    const dailyMarker = `Panorama do Dia (${todayBr})`;
-    const alreadySentToday = rows.some((r) => r.title.includes(dailyMarker));
-    if (!alreadySentToday && user.email) {
+    // Disparo automático de Energia Matinal (apenas pela manhã, entre 06h e 12h) se ainda não enviado hoje
+    const morningMarker = `Energia de Hoje · ${todayStr}`;
+    const isMorningWindow = currentHour >= 6 && currentHour < 12;
+    const alreadySentToday = rows.some(
+      (r) => r.title.includes(morningMarker) || r.title.includes(todayStr)
+    );
+
+    if (isMorningWindow && !alreadySentToday && user.email) {
       const prefs = await getUserNotificationPreferences(user.id);
       const recPref = prefs.find((p) => p.category === "recovery");
       if (!recPref || recPref.channelEmail) {
         const decision = data.performanceSummary.dailyDecision;
         const adaptive = data.performanceSummary.adaptiveProfile;
+        const hasCheckin = Boolean(data.performanceSummary.todayCheckin);
+
         const dailyPayload = buildNotificationEventPayload("morning_checkin_done", {
           recipientName: user.name || "Atleta",
           readinessScore: decision.readinessScore,
@@ -405,7 +409,7 @@ export async function getSmartNotificationFeed(): Promise<SmartNotificationFeed>
         const rendered = renderEventEmail(dailyPayload);
         const sendRes = await sendResendEmail({
           to: user.email,
-          subject: `☀️ ${dailyMarker} · Sua disposição no Selye (${decision.readinessScore}/100)`,
+          subject: `☀️ Sua prontidão hoje no Selye (${decision.readinessScore}%)`,
           html: rendered.html,
           text: rendered.text,
         }).catch(() => ({ ok: false }));
@@ -416,9 +420,11 @@ export async function getSmartNotificationFeed(): Promise<SmartNotificationFeed>
             .values({
               userId: user.id,
               category: "recovery",
-              title: `${dailyMarker} enviado para ${user.email}`,
-              body: `Reserva livre: ${adaptive.availableReserveEa} EA (${adaptive.reservePercent}%). ${decision.headline}.`,
-              actionUrl: "/calendario",
+              title: `${morningMarker}: ${adaptive.availableReserveEa} EA livres`,
+              body: hasCheckin
+                ? `Prontidão em ${decision.readinessScore}%. ${decision.headline}.`
+                : `Reserva disponível de ${adaptive.availableReserveEa} EA. Complete seu check-in para calibrar seu ritmo.`,
+              actionUrl: "/",
               isRead: false,
             })
             .returning();

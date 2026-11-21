@@ -8,8 +8,6 @@ import {
   Dumbbell,
   CalendarDays,
   Activity,
-  Users,
-  User,
   Plus,
   PlusCircle,
   Zap,
@@ -50,20 +48,6 @@ const PILL_ITEMS = [
     href: "/evolucao",
     matchPrefixes: ["/evolucao", "/performance", "/analytics"],
     icon: Activity,
-  },
-  {
-    id: "comunidade",
-    label: "Comunidade",
-    href: "/comunidade",
-    matchPrefixes: ["/comunidade", "/equipes", "/atleta"],
-    icon: Users,
-  },
-  {
-    id: "perfil",
-    label: "Perfil",
-    href: "/perfil",
-    matchPrefixes: ["/perfil", "/integracoes"],
-    icon: User,
   },
 ] as const;
 

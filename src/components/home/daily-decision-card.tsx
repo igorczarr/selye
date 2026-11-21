@@ -18,20 +18,18 @@ import {
 } from "@/core/ml/adaptive-athlete-engine";
 import { ModalPortal } from "@/components/ui/modal-portal";
 import {
-  Compass,
   Sun,
+  BatteryCharging,
+  Activity,
+  Droplets,
+  HeartPulse,
+  Moon,
+  Smile,
   Check,
   X,
-  Moon,
-  Zap,
-  Activity,
-  Smile,
-  ShieldCheck,
-  BatteryCharging,
+  Sparkles,
   ChevronDown,
   ChevronUp,
-  Clock,
-  CheckCircle2,
 } from "lucide-react";
 
 const DIMENSIONS: {
@@ -58,7 +56,7 @@ const DIMENSIONS: {
   {
     key: "energyLevel",
     label: "Energia & Disposição",
-    icon: Zap,
+    icon: Activity,
     levels: [
       { value: 1, short: "1", desc: "Exausto / sem bateria" },
       { value: 2, short: "2", desc: "Baixa energia" },
@@ -93,62 +91,31 @@ const DIMENSIONS: {
   },
 ];
 
-function ReadinessGauge({
-  score,
-  tier,
-}: {
-  score: number;
-  tier: DailyDecisionResult["tier"];
-}) {
-  const radius = 30;
-  const circumference = 2 * Math.PI * radius;
-  const norm = Math.max(0, Math.min(1, score / 100));
-  const strokeDashoffset = circumference * (1 - norm);
-  const strokeColor =
-    tier === "green_push"
-      ? "var(--lima)"
-      : tier === "yellow_modulate"
-        ? "#e0b354"
-        : "#e57373";
-
-  return (
-    <div className="relative w-20 h-20 shrink-0 flex items-center justify-center">
-      <svg
-        viewBox="0 0 72 72"
-        className="w-full h-full -rotate-90"
-        role="img"
-        aria-label={`Prontidão ${score} de 100`}
-      >
-        <circle
-          cx="36"
-          cy="36"
-          r={radius}
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="6"
-          className="text-white/10"
-        />
-        <circle
-          cx="36"
-          cy="36"
-          r={radius}
-          fill="none"
-          stroke={strokeColor}
-          strokeWidth="6"
-          strokeLinecap="round"
-          strokeDasharray={circumference}
-          strokeDashoffset={strokeDashoffset}
-          style={{ transition: "stroke-dashoffset 450ms ease" }}
-        />
-      </svg>
-      <div className="absolute inset-0 flex flex-col items-center justify-center text-center">
-        <span className="t-data text-2xl font-bold text-osso leading-none">
-          {score}
-        </span>
-      </div>
-    </div>
-  );
-}
+const QUICK_HABIT_PRESETS: {
+  code: RecoveryAttitudeCode;
+  label: string;
+  bonusEa: number;
+  icon: typeof Droplets;
+}[] = [
+  {
+    code: "hydration_nutrition",
+    label: "Hidratação",
+    bonusEa: 60,
+    icon: Droplets,
+  },
+  {
+    code: "mobility_session",
+    label: "Mobilidade",
+    bonusEa: 75,
+    icon: Activity,
+  },
+  {
+    code: "vagal_breathing",
+    label: "Respiração",
+    bonusEa: 40,
+    icon: HeartPulse,
+  },
+];
 
 export function DailyDecisionCard({
   decision,
@@ -162,10 +129,7 @@ export function DailyDecisionCard({
   const router = useRouter();
   const [openCheckinModal, setOpenCheckinModal] = useState(false);
   const [openRechargeModal, setOpenRechargeModal] = useState(false);
-  const [expandedAttitude, setExpandedAttitude] =
-    useState<RecoveryAttitudeCode | null>("mobility_session");
-  const [dismissedOverride, setDismissedOverride] = useState(false);
-  const [showMobileDetails, setShowMobileDetails] = useState(false);
+  const [isExpanded, setIsExpanded] = useState(false);
   const [isPending, startTransition] = useTransition();
 
   const [form, setForm] = useState<MorningCheckinInput>({
@@ -175,9 +139,9 @@ export function DailyDecisionCard({
     moodLevel: initialCheckin?.moodLevel ?? 4,
   });
 
-  const [loggedAttitudes, setLoggedAttitudes] = useState<
-    RecoveryAttitudeCode[]
-  >(adaptiveProfile?.todayLoggedAttitudes || []);
+  const [loggedAttitudes, setLoggedAttitudes] = useState<RecoveryAttitudeCode[]>(
+    adaptiveProfile?.todayLoggedAttitudes || []
+  );
 
   const livePreviewScore = calculateSubjectiveReadinessScore(form);
 
@@ -186,7 +150,6 @@ export function DailyDecisionCard({
     startTransition(async () => {
       await submitMorningCheckin(form);
       setOpenCheckinModal(false);
-      setDismissedOverride(false);
       router.refresh();
     });
   };
@@ -201,203 +164,295 @@ export function DailyDecisionCard({
     });
   };
 
-  const tierBadgeStyle =
+  const availableEa = adaptiveProfile?.availableReserveEa ?? 1700;
+  const capacityEa = adaptiveProfile?.personalCapacityEa ?? 1700;
+  const drainEa = adaptiveProfile?.trainingDrainEa ?? 0;
+  const rechargeEa = adaptiveProfile?.recoveryRechargeEa ?? 0;
+  const reservePct = Math.min(
+    100,
+    Math.max(6, Math.round((availableEa / Math.max(1, capacityEa)) * 100))
+  );
+
+  const isHighEnergy = reservePct >= 70;
+  const isModerateEnergy = reservePct >= 45 && reservePct < 70;
+
+  const activeHabitSuggestion = (() => {
+    if (form.sleepQuality <= 2) {
+      return {
+        title: "Sono Curto Detectado",
+        text: "Pausa de 15 min sem celular após o almoço e 500ml de água fria reidratam a fáscia e restauram sua bateria.",
+        tag: "+15 EA",
+      };
+    }
+    if (form.moodLevel <= 2) {
+      return {
+        title: "Carga de Tensão / Estresse",
+        text: "5 minutos de respiração consciente (inspire 4s, expire 4s) reduzem o cortisol e reativam o foco neural.",
+        tag: "+10 EA",
+      };
+    }
+    if (form.muscleFreshness <= 2) {
+      return {
+        title: "Musculatura Carregada",
+        text: "10 minutos de mobilidade solta ou banho morno aceleram a drenagem muscular e o alívio articular.",
+        tag: "+15 EA",
+      };
+    }
+    if (availableEa >= capacityEa * 0.85) {
+      return {
+        title: "Bateria em Alta Performance",
+        text: "Reserva de energia em ótimo nível. Mantenha hidratação constante e aproveite para buscar consistência.",
+        tag: "Alta carga",
+      };
+    }
+    return {
+      title: "Ritmo Saudável & Constância",
+      text: "Equilíbrio estável. Mantenha sono regular e refeições nutritivas para sustentar sua curva de energia.",
+      tag: "Constância",
+    };
+  })();
+
+  const batteryStatusLabel =
     decision.tier === "green_push"
-      ? "bg-lima text-grafite"
+      ? "Pronto para Acelerar"
       : decision.tier === "yellow_modulate"
-        ? "bg-[#e0b354] text-noite"
-        : "bg-[#e57373] text-noite";
+        ? "Ritmo Consciente"
+        : "Priorize Recarga";
 
   return (
     <>
-      <section
-        aria-label="Decisão do Dia, Prontidão e Reserva de Energia Adaptativa"
-        className="card p-5 sm:p-6"
-      >
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 items-stretch">
-          {/* ZONA 1 (3 colunas): Medidor Radial de Prontidão + Balanço Bidirecional EA */}
-          <div className="lg:col-span-3 surface-hero !rounded-2xl p-4 sm:p-5 flex items-center justify-between gap-3.5">
-            <ReadinessGauge
-              score={decision.readinessScore}
-              tier={decision.tier}
-            />
+      <style>{`
+        @keyframes selyeAuraPulse {
+          0%, 100% {
+            opacity: 0.35;
+            transform: scale(1) translate(0, 0);
+          }
+          50% {
+            opacity: 0.68;
+            transform: scale(1.10) translate(1.5%, -1.5%);
+          }
+        }
+        @keyframes selyeBarWave {
+          0%, 100% {
+            transform: scaleY(0.45);
+          }
+          50% {
+            transform: scaleY(1);
+          }
+        }
+      `}</style>
 
-            <div className="min-w-0 flex-1 flex flex-col justify-between gap-2">
-              <div>
-                <span className="text-[10px] font-mono uppercase tracking-wider text-nevoa block">
+      <section
+        aria-label="Bateria do Corpo e Energia Disponível"
+        className={`rounded-2xl p-4 sm:p-5 border text-white shadow-lg relative overflow-hidden transition-all duration-500 ${
+          isHighEnergy
+            ? "border-lima/40 bg-gradient-to-br from-[#121A17] via-[#16231E] to-[#111815]"
+            : isModerateEnergy
+              ? "border-amber-400/35 bg-gradient-to-br from-[#181B15] via-[#20221A] to-[#141612]"
+              : "border-red-400/30 bg-gradient-to-br from-[#1C1616] via-[#241A1A] to-[#181313]"
+        }`}
+      >
+        {/* ANIMAÇÃO DE BACKGROUND BIOLUMINESCENTE CONECTADA À EA */}
+        <div
+          aria-hidden
+          className="pointer-events-none absolute -right-20 -top-20 w-72 h-72 rounded-full blur-3xl transition-opacity"
+          style={{
+            background: isHighEnergy
+              ? "radial-gradient(circle, rgba(199,240,0,0.28) 0%, rgba(16,185,129,0.18) 50%, transparent 75%)"
+              : isModerateEnergy
+                ? "radial-gradient(circle, rgba(234,179,8,0.22) 0%, rgba(199,240,0,0.14) 50%, transparent 75%)"
+                : "radial-gradient(circle, rgba(239,68,68,0.20) 0%, rgba(245,158,11,0.12) 50%, transparent 75%)",
+            animation: `selyeAuraPulse ${isHighEnergy ? "4.2s" : "6s"} ease-in-out infinite`,
+          }}
+        />
+        <div
+          aria-hidden
+          className="pointer-events-none absolute -left-20 -bottom-20 w-64 h-64 rounded-full blur-3xl transition-opacity"
+          style={{
+            background: isHighEnergy
+              ? "radial-gradient(circle, rgba(16,185,129,0.22) 0%, rgba(199,240,0,0.12) 50%, transparent 75%)"
+              : "radial-gradient(circle, rgba(199,240,0,0.10) 0%, transparent 70%)",
+            animation: `selyeAuraPulse ${isHighEnergy ? "5.5s" : "7.5s"} ease-in-out infinite reverse`,
+          }}
+        />
+
+        <div className="relative z-10 flex flex-col gap-3">
+          {/* LINHA PRINCIPAL INTEGRADA: BATERIA DO CORPO + EA + PORCENTAGEM + CHECKIN + SETA */}
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            {/* Lado Esquerdo: Nome Redesenhado + Saldo de EA */}
+            <div className="min-w-0">
+              <div className="flex items-center gap-2 flex-wrap">
+                <span className="w-1.5 h-1.5 rounded-full bg-lima animate-pulse" />
+                <span className="text-[11px] font-mono uppercase tracking-widest text-nevoa font-semibold">
                   Bateria do Corpo
                 </span>
-                <p className="t-data text-xl font-bold text-lima leading-tight mt-0.5">
-                  {adaptiveProfile
-                    ? `${adaptiveProfile.availableReserveEa} EA`
-                    : `${decision.readinessScore}%`}
-                </p>
-                <span className="text-[10px] text-nevoa/90 block mt-0.5">
-                  Energia livre do seu corpo hoje
+                <span className="text-white/20">·</span>
+                <span className="text-xs text-white/70 font-medium">
+                  {batteryStatusLabel}
                 </span>
               </div>
 
-              {adaptiveProfile && (
-                <div className="grid grid-cols-2 gap-1.5 pt-2 border-t border-white/12 text-[11px] font-mono">
-                  <div>
-                    <span className="text-[9px] text-nevoa block uppercase">
-                      Consumo
-                    </span>
-                    <span className="text-osso font-semibold">
-                      -{adaptiveProfile.trainingDrainEa} EA
-                    </span>
-                  </div>
-                  <div>
-                    <span className="text-[9px] text-nevoa block uppercase">
-                      Recarga
-                    </span>
-                    <span className="text-lima font-semibold">
-                      +{adaptiveProfile.recoveryRechargeEa} EA
-                    </span>
-                  </div>
-                </div>
-              )}
+              <div className="flex items-baseline gap-2 mt-1 flex-wrap">
+                <h2 className="text-2xl sm:text-3xl font-extrabold font-mono text-white tracking-tight leading-tight">
+                  {availableEa.toLocaleString("pt-BR")}{" "}
+                  <span className="text-lima text-lg sm:text-xl font-sans font-bold">
+                    EA
+                  </span>
+                </h2>
+                <span className="text-xs text-nevoa">
+                  livres hoje <span className="text-white/40">/</span> {capacityEa.toLocaleString("pt-BR")} EA
+                </span>
+              </div>
             </div>
-          </div>
 
-          {/* ZONA 2 (5 colunas): Bússola do Dia + Explicação + Diretriz Prática */}
-          <div className="lg:col-span-5 flex flex-col justify-between gap-3 px-1">
-            <div>
-              <div className="flex flex-wrap items-center gap-2">
-                <span className="inline-flex items-center gap-1.5 t-label !text-accent-text">
-                  <Compass size={14} className="text-accent-text shrink-0" />
-                  <span>Decisão do Dia</span>
-                </span>
-                <span
-                  className={`px-2.5 py-0.5 rounded-full text-[11px] font-mono font-semibold shadow-sm ${tierBadgeStyle}`}
-                >
-                  {decision.badgeLabel}
-                </span>
-                {decision.modalityContextBadge && (
-                  <span className="px-2 py-0.5 rounded-full text-[10px] font-mono font-medium border border-line bg-foreground/[0.04] text-muted">
-                    {decision.modalityContextBadge}
-                  </span>
-                )}
-                {decision.hasCheckinToday && (
-                  <span className="inline-flex items-center gap-1 text-[11px] font-mono text-muted">
-                    <ShieldCheck size={12} className="text-accent-text" />
-                    <span>Calibrado hoje</span>
-                  </span>
-                )}
-              </div>
-
-              <h2 className="t-h2 mt-2 text-foreground">
-                {dismissedOverride
-                  ? "Autonomia Ativa: você escolheu seguir seu plano original hoje"
-                  : decision.headline}
-              </h2>
-              <p
-                className={`text-xs sm:text-[13px] text-muted mt-1.5 leading-relaxed ${
-                  showMobileDetails ? "block" : "hidden lg:block"
-                }`}
+            {/* Lado Direito: Porcentagem + Checkin + +EA + Seta juntos em linha */}
+            <div className="flex items-center gap-2 shrink-0 self-end sm:self-center flex-wrap">
+              {/* Apenas a porcentagem com barras vitais (palavra Prontidão removida) */}
+              <div
+                className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-black/40 border border-white/12 shadow-inner backdrop-blur-sm"
+                title={`Nível biológico: ${decision.readinessScore}%`}
               >
-                {decision.whyExplanation}
-              </p>
-            </div>
-
-            <div className="rounded-xl bg-foreground/[0.03] border border-line px-4 py-3 flex items-start justify-between gap-3">
-              <p className="text-xs text-foreground leading-relaxed">
-                <span className="font-mono text-[10px] uppercase tracking-wider text-accent-text font-semibold mr-1.5">
-                  Sugestão:
+                <span className="text-xs font-mono font-bold text-white leading-none">
+                  {decision.readinessScore}%
                 </span>
-                {decision.suggestedAction}
-              </p>
-              {decision.tier !== "green_push" && !dismissedOverride && (
-                <button
-                  type="button"
-                  onClick={() => setDismissedOverride(true)}
-                  className="text-[11px] font-mono text-muted hover:text-foreground underline shrink-0 cursor-pointer"
-                >
-                  Ignorar
-                </button>
-              )}
-            </div>
-          </div>
 
-          {/* ZONA 3 (4 colunas): Ações Diretas + Grade 2×2 de Sinais do Corpo (recolhível no mobile) */}
-          <div className="lg:col-span-4 flex flex-col justify-between gap-3 lg:border-l lg:border-line lg:pl-5">
-            <div
-              className={`grid-cols-2 gap-2.5 ${
-                showMobileDetails ? "grid" : "hidden lg:grid"
-              }`}
-            >
-              {decision.factors.slice(0, 4).map((f) => (
-                <div
-                  key={f.label}
-                  className="rounded-xl bg-foreground/[0.025] border border-line px-3 py-2.5 flex flex-col justify-between transition-colors hover:border-mineral/60"
-                >
-                  <span className="text-[10px] font-mono uppercase tracking-wider text-muted truncate">
-                    {f.label}
-                  </span>
-                  <span
-                    className={`text-xs font-mono mt-0.5 truncate ${
-                      f.impact === "positive"
-                        ? "text-accent-text font-semibold"
-                        : f.impact === "caution"
-                          ? "text-[#e0b354] font-semibold"
-                          : "text-foreground font-medium"
-                    }`}
-                  >
-                    {f.valueText}
-                  </span>
+                <div className="flex items-end gap-0.5 h-4 pl-1.5 border-l border-white/15">
+                  {[0.4, 0.7, 0.9, 0.6].map((baseHeight, i) => {
+                    const isLit = decision.readinessScore >= (i + 1) * 22;
+                    return (
+                      <span
+                        key={i}
+                        className={`w-1 rounded-full transition-all ${
+                          isLit
+                            ? "bg-lima shadow-[0_0_5px_rgba(199,240,0,0.6)]"
+                            : "bg-white/20"
+                        }`}
+                        style={{
+                          height: `${Math.round(baseHeight * 14)}px`,
+                          animation: isLit
+                            ? `selyeBarWave ${1.2 + i * 0.3}s ease-in-out infinite`
+                            : "none",
+                        }}
+                      />
+                    );
+                  })}
                 </div>
-              ))}
-            </div>
+              </div>
 
-            <button
-              type="button"
-              onClick={() => setShowMobileDetails((v) => !v)}
-              className="lg:hidden h-8 px-3 rounded-lg border border-line bg-foreground/[0.02] text-[11px] font-mono text-muted hover:text-foreground flex items-center justify-between cursor-pointer"
-            >
-              <span>
-                {showMobileDetails
-                  ? "Ocultar detalhes e sinais do dia"
-                  : "Ver por quê e 4 sinais do corpo"}
-              </span>
-              {showMobileDetails ? (
-                <ChevronUp size={13} />
-              ) : (
-                <ChevronDown size={13} />
-              )}
-            </button>
-
-            <div className="grid grid-cols-2 gap-2">
+              {/* Botão de Check-in */}
               <button
                 type="button"
                 onClick={() => setOpenCheckinModal(true)}
-                className={`btn h-9 px-3 text-xs w-full ${
-                  decision.hasCheckinToday ? "btn-ghost" : "btn-primary"
-                }`}
+                className="h-8 px-3 rounded-lg bg-lima hover:brightness-105 active:scale-[0.98] text-grafite text-xs font-mono font-bold inline-flex items-center gap-1.5 transition-all cursor-pointer shadow-sm"
               >
-                <Sun size={14} className="shrink-0" />
-                <span className="truncate">
-                  {decision.hasCheckinToday
-                    ? "Check-in Feito"
-                    : "Check-in Matinal"}
+                <Sun size={13} />
+                <span>
+                  {decision.hasCheckinToday ? "Check-in feito" : "Check-in (+EA)"}
                 </span>
               </button>
 
+              {/* Botão +EA Recarga */}
               <button
                 type="button"
                 onClick={() => setOpenRechargeModal(true)}
-                className="btn btn-dark h-9 px-3 text-xs font-mono w-full"
-                title="Hábitos simples que recarregam a bateria do seu corpo (+EA)"
+                className="h-8 px-2.5 rounded-lg bg-white/[0.08] hover:bg-white/[0.14] text-white border border-white/15 text-xs font-mono inline-flex items-center gap-1 transition-all cursor-pointer"
+                title="Hábitos de Recarga (+EA)"
               >
-                <BatteryCharging size={14} className="text-lima shrink-0" />
-                <span className="truncate">Recarregar +EA</span>
+                <BatteryCharging size={13} className="text-lima" />
+                <span>+EA</span>
                 {loggedAttitudes.length > 0 && (
-                  <span className="px-1.5 py-0.2 rounded-full bg-lima text-grafite text-[10px] font-semibold shrink-0">
-                    +{loggedAttitudes.length}
+                  <span className="px-1 py-0.2 rounded bg-lima text-grafite text-[9px] font-bold">
+                    {loggedAttitudes.length}
                   </span>
                 )}
               </button>
+
+              {/* Seta para expandir/recolher detalhes colocada junta */}
+              <button
+                type="button"
+                onClick={() => setIsExpanded((prev) => !prev)}
+                aria-expanded={isExpanded}
+                aria-label={
+                  isExpanded ? "Recolher detalhes" : "Expandir detalhes"
+                }
+                className="h-8 w-8 rounded-lg border border-white/12 bg-white/[0.05] hover:bg-white/[0.12] text-nevoa hover:text-white flex items-center justify-center transition-all cursor-pointer shrink-0"
+              >
+                {isExpanded ? <ChevronUp size={15} /> : <ChevronDown size={15} />}
+              </button>
             </div>
           </div>
+
+          {/* Barra de Carga Esguia Bioluminescente */}
+          <div className="w-full h-1.5 rounded-full bg-white/10 overflow-hidden shadow-inner">
+            <div
+              className="h-full rounded-full bg-gradient-to-r from-lima via-emerald-400 to-sky-400 transition-all duration-700 shadow-[0_0_8px_rgba(199,240,0,0.4)]"
+              style={{ width: `${reservePct}%` }}
+            />
+          </div>
+
+          {/* ACORDEÃO EXPANSÍVEL: DETALHES, SUGESTÃO ATIVA E MICRO-HÁBITOS */}
+          {isExpanded && (
+            <div className="pt-2.5 border-t border-white/10 flex flex-col gap-2.5 animate-in fade-in duration-200">
+              <div className="flex items-center justify-between text-[11px] font-mono text-nevoa">
+                <span>
+                  Consumo em treinos:{" "}
+                  <strong className="text-red-300">-{drainEa} EA</strong>
+                </span>
+                <span>
+                  Recarga com hábitos:{" "}
+                  <strong className="text-lima">+{rechargeEa} EA</strong>
+                </span>
+              </div>
+
+              <div className="rounded-xl border border-white/10 bg-black/25 p-3 flex flex-col gap-1.5">
+                <div className="flex items-center justify-between gap-2">
+                  <div className="flex items-center gap-1.5 min-w-0">
+                    <Sparkles size={12} className="text-lima shrink-0" />
+                    <span className="text-xs font-bold text-white uppercase tracking-wider truncate">
+                      {activeHabitSuggestion.title}
+                    </span>
+                  </div>
+                  <span className="px-2 py-0.5 rounded text-[9px] font-mono font-bold bg-lima/20 text-lima shrink-0">
+                    {activeHabitSuggestion.tag}
+                  </span>
+                </div>
+                <p className="text-xs text-nevoa leading-relaxed">
+                  {activeHabitSuggestion.text}
+                </p>
+
+                <div className="pt-1.5 border-t border-white/10 flex flex-wrap items-center gap-1.5">
+                  <span className="text-[10px] font-mono text-nevoa uppercase tracking-wider mr-1">
+                    Atalhos:
+                  </span>
+                  {QUICK_HABIT_PRESETS.map((preset) => {
+                    const Icon = preset.icon;
+                    const isLogged = loggedAttitudes.includes(preset.code);
+                    return (
+                      <button
+                        key={preset.code}
+                        type="button"
+                        disabled={isPending}
+                        onClick={() => handleToggleAttitude(preset.code)}
+                        className={`h-6 px-2 rounded-full text-[10px] font-mono font-medium inline-flex items-center gap-1 transition-all cursor-pointer ${
+                          isLogged
+                            ? "bg-lima text-grafite font-bold"
+                            : "bg-white/[0.05] hover:bg-white/[0.10] text-nevoa hover:text-white border border-white/10"
+                        }`}
+                      >
+                        {isLogged ? (
+                          <Check size={10} strokeWidth={2.8} />
+                        ) : (
+                          <Icon size={10} className="text-lima" />
+                        )}
+                        <span>{preset.label}</span>
+                        <span className="opacity-75">+{preset.bonusEa}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            </div>
+          )}
         </div>
       </section>
 
@@ -419,7 +474,7 @@ export function DailyDecisionCard({
               </span>
               <h2 className="t-h2 mt-0.5">Como seu corpo acordou hoje?</h2>
               <p className="text-xs text-muted mt-0.5">
-                Toque de 1 a 5 em cada item para ajustar sua sugestão de hoje e a bateria do seu corpo (EA).
+                Toque de 1 a 5 em cada item para calibrar a bateria do seu corpo (EA).
               </p>
             </div>
             <button
@@ -487,226 +542,107 @@ export function DailyDecisionCard({
           <div className="rounded-xl border border-line bg-noite text-osso px-4 py-3 flex items-center justify-between gap-3">
             <div>
               <span className="text-[10px] font-mono uppercase tracking-wider text-nevoa block">
-                Índice de Prontidão de Hoje
+                Prontidão Estimada
               </span>
               <p className="text-xs text-nevoa mt-0.5">
                 {form.sleepQuality >= 4
-                  ? "Sono reparador detectado: adiciona +EA à sua Reserva Adaptativa"
+                  ? "Sono restaurador: recarrega +EA na sua Bateria"
                   : form.sleepQuality <= 2
-                    ? "Sono curto detectado: reduz -EA da sua reserva disponível"
-                    : "Cruzado automaticamente com sua carga de ontem e seu ritmo pessoal"}
+                    ? "Sono leve detectado: orienta pausa e hidratação"
+                    : "Calibrado com seu ritmo corporal"}
               </p>
             </div>
             <span className="t-data text-2xl font-semibold text-lima shrink-0">
-              {livePreviewScore}/100
+              {livePreviewScore}%
             </span>
           </div>
 
-          <div className="flex items-center justify-between gap-2 pt-1">
-            <span className="text-[11px] text-muted">
-              Dados privados · Calibração contínua do seu perfil
-            </span>
-            <div className="flex items-center gap-2">
-              <button
-                type="button"
-                onClick={() => setOpenCheckinModal(false)}
-                className="btn btn-ghost h-10 px-4 text-xs"
-              >
-                Cancelar
-              </button>
-              <button
-                type="submit"
-                disabled={isPending}
-                className="btn btn-primary h-10 px-5 text-xs"
-              >
-                <Check size={14} strokeWidth={2.4} />
-                <span>
-                  {isPending ? "Calibrando..." : "Salvar Check-in"}
-                </span>
-              </button>
-            </div>
-          </div>
+          <button
+            type="submit"
+            disabled={isPending}
+            className="btn btn-primary h-10 w-full text-xs font-mono font-bold"
+          >
+            {isPending ? "Salvando..." : "Confirmar e Atualizar Bateria"}
+          </button>
         </form>
       </ModalPortal>
 
-      {/* Modal 2: Protocolos Guiados Passo a Passo para Recarregar Energia Adaptativa (+EA) */}
+      {/* Modal 2: Catálogo de Hábitos de Recarga (+EA) via ModalPortal */}
       <ModalPortal
         open={openRechargeModal}
         onClose={() => setOpenRechargeModal(false)}
-        ariaLabel="Protocolos para Recarregar Energia Adaptativa"
+        ariaLabel="Recarregar Bateria do Corpo (+EA)"
         maxWidthClass="sm:max-w-xl"
       >
         <div className="w-full bg-surface border border-line rounded-2xl shadow-2xl p-5 sm:p-6 flex flex-col gap-4 max-h-[88dvh] overflow-y-auto">
           <div className="flex items-start justify-between gap-3">
             <div>
-              <span className="t-label !text-accent-text">
-                Protocolos de Recuperação Ativa · +EA
+              <span className="t-label !text-accent-text inline-flex items-center gap-1.5">
+                <BatteryCharging size={13} />
+                <span>Hábitos Regenerativos (+EA)</span>
               </span>
-              <h2 className="t-h2 mt-0.5">
-                Recarregar sua Energia Adaptativa
-              </h2>
+              <h2 className="t-h2 mt-0.5">Recarregue a Bateria do Seu Corpo</h2>
               <p className="text-xs text-muted mt-0.5">
-                Abra qualquer protocolo abaixo para ver o passo a passo prático e marque os hábitos concluídos hoje para expandir sua reserva.
+                Pequenas atitudes diárias que reduzem o estresse e aceleram sua recuperação entre treinos.
               </p>
             </div>
             <button
               type="button"
               onClick={() => setOpenRechargeModal(false)}
-              aria-label="Fechar protocolos de recarga"
+              aria-label="Fechar"
               className="w-8 h-8 rounded-lg flex items-center justify-center text-muted hover:text-foreground hover:bg-foreground/5 cursor-pointer shrink-0"
             >
               <X size={16} />
             </button>
           </div>
 
-          {adaptiveProfile && (
-            <div className="rounded-xl bg-noite text-osso p-4 flex flex-col gap-2.5 border border-line">
-              <div className="flex items-center justify-between gap-2 text-xs font-mono">
-                <span className="text-lima font-semibold">
-                  {adaptiveProfile.learningStageLabel}
-                </span>
-                <span className="text-nevoa">
-                  Capacidade Semanal: {adaptiveProfile.personalCapacityEa} EA
-                </span>
-              </div>
-
-              <div className="grid grid-cols-3 gap-2 pt-1">
-                <div className="p-2.5 rounded-lg bg-white/[0.05]">
-                  <span className="text-[10px] font-mono text-nevoa block">
-                    Esforço (-EA)
-                  </span>
-                  <p className="t-data text-sm font-semibold text-osso mt-0.5">
-                    -{adaptiveProfile.trainingDrainEa} EA
-                  </p>
-                </div>
-                <div className="p-2.5 rounded-lg bg-lima/15 border border-lima/30">
-                  <span className="text-[10px] font-mono text-lima block">
-                    Recarga (+EA)
-                  </span>
-                  <p className="t-data text-sm font-semibold text-lima mt-0.5">
-                    +{adaptiveProfile.recoveryRechargeEa} EA
-                  </p>
-                </div>
-                <div className="p-2.5 rounded-lg bg-white/[0.05]">
-                  <span className="text-[10px] font-mono text-nevoa block">
-                    Reserva Livre
-                  </span>
-                  <p className="t-data text-sm font-semibold text-osso mt-0.5">
-                    {adaptiveProfile.availableReserveEa} EA
-                  </p>
-                </div>
-              </div>
-            </div>
-          )}
-
-          <div className="flex flex-col gap-2.5">
-            {RECOVERY_ATTITUDES_CATALOG.map((item) => {
-              const active = loggedAttitudes.includes(item.code);
-              const isExpanded = expandedAttitude === item.code;
-              const scaledGain = Math.round(
-                item.baseRechargeEa *
-                  (adaptiveProfile?.recoveryGainMultiplier ?? 1.0)
-              );
-
+          <div className="divide-y divide-line">
+            {RECOVERY_ATTITUDES_CATALOG.map((att) => {
+              const active = loggedAttitudes.includes(att.code);
               return (
-                <article
-                  key={item.code}
-                  className={`rounded-xl border transition-all overflow-hidden ${
-                    active
-                      ? "border-lima bg-lima/10"
-                      : "border-line bg-foreground/[0.02]"
-                  }`}
+                <div
+                  key={att.code}
+                  className="py-3 flex items-start justify-between gap-3"
                 >
-                  <div className="p-3.5 flex items-start justify-between gap-3">
-                    <button
-                      type="button"
-                      onClick={() =>
-                        setExpandedAttitude(isExpanded ? null : item.code)
-                      }
-                      aria-expanded={isExpanded}
-                      className="min-w-0 flex-1 text-left cursor-pointer"
-                    >
-                      <div className="flex flex-wrap items-center gap-2">
-                        <h3 className="text-xs font-semibold text-foreground">
-                          {item.labelPt}
-                        </h3>
-                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-surface border border-line text-[10px] font-mono text-muted">
-                          <Clock size={10} />
-                          <span>{item.durationLabelPt}</span>
-                        </span>
-                        <span className="text-[10px] font-mono text-accent-text">
-                          {item.timingLabelPt}
-                        </span>
-                      </div>
-                      <p className="text-[11px] text-muted mt-1">
-                        {item.descriptionPt}
-                      </p>
-                      <span className="inline-flex items-center gap-1 text-[11px] font-mono text-accent-text mt-1.5 hover:underline">
-                        <span>
-                          {isExpanded
-                            ? "Ocultar passo a passo"
-                            : "Ver passo a passo de execução"}
-                        </span>
-                        {isExpanded ? (
-                          <ChevronUp size={12} />
-                        ) : (
-                          <ChevronDown size={12} />
-                        )}
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-2">
+                      <h4 className="text-xs font-semibold text-foreground">
+                        {att.labelPt}
+                      </h4>
+                      <span className="px-2 py-0.5 rounded text-[10px] font-mono font-semibold bg-lima/20 text-accent-text">
+                        +{att.baseRechargeEa} EA
                       </span>
-                    </button>
-
-                    <button
-                      type="button"
-                      disabled={isPending}
-                      aria-pressed={active}
-                      onClick={() => handleToggleAttitude(item.code)}
-                      className={`h-9 px-3 rounded-lg border text-xs font-mono font-semibold inline-flex items-center gap-1.5 shrink-0 transition-all cursor-pointer ${
-                        active
-                          ? "bg-lima text-grafite border-lima"
-                          : "bg-surface border-line text-foreground hover:border-mineral"
-                      }`}
-                    >
-                      <CheckCircle2 size={13} />
-                      <span>
-                        {active ? `Concluído (+${scaledGain} EA)` : `+${scaledGain} EA`}
-                      </span>
-                    </button>
+                    </div>
+                    <p className="text-[11px] text-muted mt-1 leading-relaxed">
+                      {att.descriptionPt}
+                    </p>
                   </div>
 
-                  {isExpanded && (
-                    <div className="px-3.5 pb-3.5 pt-2 border-t border-line/60 bg-surface/60">
-                      <span className="t-label block mb-2">
-                        Passo a Passo Recomendado
-                      </span>
-                      <ol className="flex flex-col gap-2">
-                        {item.stepsPt.map((step, idx) => (
-                          <li
-                            key={idx}
-                            className="flex items-start gap-2.5 text-xs text-foreground leading-relaxed"
-                          >
-                            <span className="w-5 h-5 rounded-full bg-lima text-grafite font-mono text-[11px] font-semibold flex items-center justify-center shrink-0 mt-0.5">
-                              {idx + 1}
-                            </span>
-                            <span>{step}</span>
-                          </li>
-                        ))}
-                      </ol>
-                    </div>
-                  )}
-                </article>
+                  <button
+                    type="button"
+                    disabled={isPending}
+                    onClick={() => handleToggleAttitude(att.code)}
+                    className={`h-8 px-3 rounded-lg text-xs font-mono font-semibold inline-flex items-center gap-1.5 transition-all cursor-pointer shrink-0 ${
+                      active
+                        ? "bg-lima text-grafite font-bold"
+                        : "border border-line bg-surface hover:bg-foreground/5 text-muted hover:text-foreground"
+                    }`}
+                  >
+                    {active ? <Check size={12} strokeWidth={2.8} /> : null}
+                    <span>{active ? "Feito hoje" : "Marcar"}</span>
+                  </button>
+                </div>
               );
             })}
           </div>
 
-          <div className="flex justify-end pt-1">
-            <button
-              type="button"
-              onClick={() => setOpenRechargeModal(false)}
-              className="btn btn-primary h-10 px-5 text-xs"
-            >
-              Concluir
-            </button>
-          </div>
+          <button
+            type="button"
+            onClick={() => setOpenRechargeModal(false)}
+            className="btn btn-primary h-9 w-full text-xs font-mono font-bold mt-2"
+          >
+            Concluir
+          </button>
         </div>
       </ModalPortal>
     </>

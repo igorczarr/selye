@@ -70,7 +70,7 @@ export default function ComunidadePage(props: {
           <span className="t-label">Rede Esportiva</span>
           <h1 className="t-h1 mt-1">Comunidade</h1>
           <p className="text-muted text-sm mt-1">
-            Check-ins de treino, fios de discussão por grupo, #hashtags e desafios coletivos.
+            Grupos exclusivos estruturados pelos Teams de cada treinador e personal trainer.
           </p>
         </div>
 

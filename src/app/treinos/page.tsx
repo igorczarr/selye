@@ -14,6 +14,7 @@ async function RoutinesList() {
   return (
     <RoutinesHub
       routines={data.routines}
+      activeSession={data.activeSession}
       athletePrimaryModality={athleteCtx.primaryModality}
       experienceLevel={athleteCtx.experienceLevel}
     />
@@ -48,7 +49,7 @@ export default function TreinosPage() {
   return (
     <div className="min-h-screen bg-background text-foreground flex flex-col pb-24">
       <Navbar />
-      <main className="selye-container py-6 flex-1">
+      <main className="selye-container py-7 sm:py-9 flex-1">
         <Suspense fallback={<RoutinesSkeleton />}>
           <RoutinesList />
         </Suspense>

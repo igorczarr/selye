@@ -46,6 +46,8 @@ import {
   RotateCcw,
   Flag,
   Clock,
+  Compass,
+  Play,
 } from "lucide-react";
 
 const PHASE_STYLES: Record<
@@ -457,16 +459,16 @@ export function EnergeticCalendarHub({
 
   return (
     <div className="flex flex-col gap-6 fade-up">
-      {/* Cabeçalho Global da Página */}
+      {/* Cabeçalho Global da Página (Consistente com Home & Treinos) */}
       <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4">
         <div>
-          <span className="t-label !text-accent-text inline-flex items-center gap-1.5">
+          <span className="text-[10px] font-mono uppercase tracking-widest text-accent-text font-bold inline-flex items-center gap-1.5">
             <CalendarDays size={13} />
-            <span>Ciclo Energético & Planejamento Fisiológico</span>
+            <span>Ciclo Energético · {plan.modalityLabelPt}</span>
           </span>
-          <h1 className="t-h1 mt-1">Calendário do Seu Corpo</h1>
-          <p className="text-sm text-muted mt-1 max-w-2xl">
-            Entenda seus dias de maior e menor energia, organize seus compromissos e acompanhe com clareza a curva de <strong>Energia do Corpo (EA)</strong> até sua próxima prova ou meta pessoal.
+          <h1 className="t-h1 mt-1 font-bold text-foreground tracking-tight">Calendário</h1>
+          <p className="text-xs text-muted mt-1 max-w-2xl font-mono">
+            Ciclo de Energia Adaptativa (EA), prontidão biológica e compromissos estratégicos alinhados à sua meta.
           </p>
         </div>
 
@@ -477,22 +479,22 @@ export function EnergeticCalendarHub({
               setCommitDate(selectedDay?.dateStr || snapshot.todayDateStr);
               setCommitModalOpen(true);
             }}
-            className="btn btn-ghost h-10 px-3.5 text-xs"
+            className="btn btn-ghost h-9 px-3 text-xs font-mono shrink-0 shadow-2xs"
           >
-            <Plus size={14} />
-            <span>Compromisso / Bloqueio</span>
+            <Plus size={13} className="mr-1.5" />
+            <span>+ Compromisso</span>
           </button>
 
           <button
             type="button"
             onClick={() => setGoalModalOpen(true)}
-            className="btn btn-primary h-10 px-4 text-xs"
+            className="btn btn-primary h-9 px-3.5 text-xs font-mono font-bold shrink-0 shadow-sm"
           >
-            <Trophy size={14} />
+            <Trophy size={13} className="mr-1.5" />
             <span>
               {hasCustomGoal
-                ? "Ajustar Meta / Competição"
-                : "Planejar Competição ou Meta"}
+                ? "Ajustar Meta"
+                : "Definir Meta"}
             </span>
           </button>
         </div>
@@ -521,20 +523,30 @@ export function EnergeticCalendarHub({
       {/* ================= SEÇÃO 1: HERO DO CICLO + CURVA DE EA (BENTO 7 + 5) ================= */}
       <div className="bento-grid items-stretch stagger-1">
         {/* Esquerda (7 cols): Status da Meta / Ciclo Perene */}
-        <section className="col-span-12 xl:col-span-7 surface-hero p-5 sm:p-6 flex flex-col justify-between gap-5">
-          <div className="flex flex-col gap-3">
+        <section className="col-span-12 xl:col-span-7 rounded-2xl p-5 sm:p-6 border border-lima/35 bg-gradient-to-br from-[#111714] via-[#15211B] to-[#0F1512] text-white shadow-lg relative overflow-hidden flex flex-col justify-between gap-5">
+          {/* Glow de fundo bioluminescente */}
+          <div
+            aria-hidden
+            className="pointer-events-none absolute -right-16 -top-16 w-60 h-60 rounded-full blur-3xl opacity-25"
+            style={{
+              background:
+                "radial-gradient(circle, rgba(199,240,0,0.3) 0%, rgba(16,185,129,0.18) 50%, transparent 70%)",
+            }}
+          />
+
+          <div className="relative z-10 flex flex-col gap-3">
             <div className="flex flex-wrap items-center justify-between gap-2">
               <div className="flex flex-wrap items-center gap-2">
-                <span className="px-2.5 py-0.5 rounded-full text-[11px] font-mono font-semibold bg-lima text-grafite">
+                <span className="px-2.5 py-0.5 rounded-full text-[11px] font-mono font-bold bg-lima text-grafite">
                   {plan.mode === "competition"
                     ? "Modo Competição & Ápice"
                     : "Ciclo · Constância"}
                 </span>
-                <span className="px-2.5 py-0.5 rounded-full text-[11px] font-mono bg-white/10 text-osso">
+                <span className="px-2.5 py-0.5 rounded-full text-[11px] font-mono font-semibold bg-white/10 text-osso border border-white/10">
                   {progress.trajectoryBadgePt}
                 </span>
               </div>
-              <span className="t-data text-xs text-nevoa">
+              <span className="font-mono text-xs text-nevoa">
                 {progress.daysRemaining === 0
                   ? "Dia da Meta!"
                   : `Faltam ${progress.daysRemaining} dias · Alvo: ${formatDateBr(
@@ -545,50 +557,93 @@ export function EnergeticCalendarHub({
             </div>
 
             <div>
-              <h2 className="t-h2 !text-osso">{plan.eventTitle}</h2>
-              <p className="text-xs text-nevoa mt-1 leading-relaxed">
+              <h2 className="text-xl sm:text-2xl font-bold text-white tracking-tight">{plan.eventTitle}</h2>
+              <p className="text-xs text-nevoa mt-1 leading-relaxed font-mono">
                 {progress.trajectoryMessagePt}
               </p>
             </div>
           </div>
 
+          {/* Alerta de Recálculo Vivo do Coach Diário (se o usuário acordou cansado no check-in) */}
+          {snapshot.dailyCoach?.adaptation?.isSoftenedToday && (
+            <div className="relative z-10 rounded-xl border border-amber-400/40 bg-amber-500/15 p-3.5 flex items-start gap-2.5 text-xs text-osso">
+              <ShieldCheck size={16} className="text-amber-400 shrink-0 mt-0.5" />
+              <div>
+                <p className="font-semibold text-amber-300">
+                  {snapshot.dailyCoach.adaptation.badgePt}: {snapshot.dailyCoach.adaptation.headlinePt}
+                </p>
+                <p className="text-nevoa mt-0.5 leading-relaxed">
+                  {snapshot.dailyCoach.adaptation.guidancePt}
+                </p>
+              </div>
+            </div>
+          )}
+
+          {/* Status Unificado de Hoje: Bateria + Decisão do Dia + Nos Trilhos */}
+          <div className="relative z-10 grid grid-cols-2 sm:grid-cols-3 gap-2 p-3 rounded-xl bg-black/40 border border-white/10 text-xs">
+            <div>
+              <span className="text-[10px] font-mono uppercase text-nevoa block font-semibold">
+                Bateria Hoje
+              </span>
+              <span className="font-mono text-sm font-bold text-lima">
+                {snapshot.adaptiveProfile?.availableReserveEa ?? progress.currentRealEa} EA livres
+              </span>
+            </div>
+            <div>
+              <span className="text-[10px] font-mono uppercase text-nevoa block font-semibold">
+                Decisão de Hoje
+              </span>
+              <span className="font-mono text-sm font-semibold text-osso truncate block">
+                {snapshot.dailyDecision?.badgeLabel ?? "Normal"}
+              </span>
+            </div>
+            <div className="col-span-2 sm:col-span-1">
+              <span className="text-[10px] font-mono uppercase text-nevoa block font-semibold">
+                Nos Trilhos?
+              </span>
+              <span className="font-mono text-sm font-semibold text-emerald-400">
+                {progress.trajectoryBadgePt}
+              </span>
+            </div>
+          </div>
+
           {/* Barra de Progresso de EA: Atual -> Meta */}
-          <div className="rounded-xl bg-white/[0.05] border border-white/10 p-4 flex flex-col gap-3">
+          <div className="relative z-10 rounded-xl bg-black/40 border border-white/10 p-4 flex flex-col gap-3">
             <div className="grid grid-cols-3 gap-3">
               <div>
-                <span className="text-[10px] font-mono uppercase tracking-wider text-nevoa block">
+                <span className="text-[10px] font-mono uppercase tracking-wider text-nevoa block font-semibold">
                   EA Base → Atual
                 </span>
-                <p className="t-data text-xl sm:text-2xl font-bold text-lima mt-0.5">
+                <p className="font-mono font-black text-xl sm:text-2xl text-lima mt-0.5 tracking-tight">
                   {progress.currentRealEa}
-                  <span className="text-xs font-normal text-nevoa ml-1">EA</span>
+                  <span className="text-xs font-bold text-nevoa ml-1">EA</span>
                 </p>
                 <span className="text-[10px] font-mono text-nevoa/80 block">
                   Base: {snapshot.personalCapacityEa} EA
                 </span>
               </div>
               <div>
-                <span className="text-[10px] font-mono uppercase tracking-wider text-nevoa block">
+                <span className="text-[10px] font-mono uppercase tracking-wider text-nevoa block font-semibold">
                   Meta Planejada
                 </span>
-                <p className="t-data text-xl sm:text-2xl font-bold text-osso mt-0.5">
+                <p className="font-mono font-black text-xl sm:text-2xl text-white mt-0.5 tracking-tight">
                   {plan.projectedPeakEa}
-                  <span className="text-xs font-normal text-nevoa ml-1">EA</span>
+                  <span className="text-xs font-bold text-nevoa ml-1">EA</span>
                 </p>
                 <span className="text-[10px] font-mono text-nevoa/80 block">
                   Meta fixa do ciclo
                 </span>
               </div>
               <div>
-                <span className="text-[10px] font-mono uppercase tracking-wider text-nevoa block">
+                <span className="text-[10px] font-mono uppercase tracking-wider text-nevoa block font-semibold">
                   Falta Construir
                 </span>
-                <p className="t-data text-xl sm:text-2xl font-bold text-emerald-400 mt-0.5">
+                <p className="font-mono font-black text-xl sm:text-2xl text-emerald-400 mt-0.5 tracking-tight">
                   {progress.remainingEaToTarget > 0
                     ? `+${progress.remainingEaToTarget}`
                     : "Atingido"}
                   {progress.remainingEaToTarget > 0 && (
-                    <span className="text-xs font-normal text-nevoa ml-1">EA</span>
+                    <span className="text-xs font-bold text-nevoa ml-1">EA</span>
                   )}
                 </p>
                 <span className="text-[10px] font-mono text-nevoa/80 block">
@@ -598,9 +653,9 @@ export function EnergeticCalendarHub({
             </div>
 
             <div className="flex flex-col gap-1.5">
-              <div className="w-full h-2.5 rounded-full bg-white/10 overflow-hidden">
+              <div className="w-full h-2 rounded-full bg-white/10 overflow-hidden">
                 <div
-                  className="h-full rounded-full bg-gradient-to-r from-lima to-emerald-400 transition-all duration-500"
+                  className="h-full rounded-full bg-gradient-to-r from-lima to-emerald-400 shadow-[0_0_8px_rgba(199,240,0,0.4)] transition-all duration-500"
                   style={{
                     width: `${Math.max(8, progress.eaProgressPercent)}%`,
                   }}
@@ -608,10 +663,10 @@ export function EnergeticCalendarHub({
               </div>
               <div className="flex items-center justify-between text-[11px] font-mono text-nevoa">
                 <span>
-                  Base inicial: {plan.currentEa} EA · Adesão do plano:{" "}
-                  <strong className="text-osso">{progress.adherencePercent}%</strong>
+                  Base inicial: {plan.currentEa} EA · Adesão:{" "}
+                  <strong className="text-white font-bold">{progress.adherencePercent}%</strong>
                 </span>
-                <span>{progress.eaProgressPercent}% da curva</span>
+                <span className="text-lima font-bold">{progress.eaProgressPercent}% da curva</span>
               </div>
             </div>
           </div>
@@ -996,19 +1051,23 @@ export function EnergeticCalendarHub({
                   type="button"
                   onClick={() => setSelectedDateStr(day.dateStr)}
                   aria-pressed={isSelected}
-                  className={`min-h-[60px] sm:min-h-[96px] rounded-lg sm:rounded-xl border p-1 sm:p-2 text-left flex flex-col justify-between transition-all cursor-pointer relative overflow-hidden ${
-                    pStyle.cellBorderClass
+                  className={`min-h-[64px] sm:min-h-[96px] rounded-xl border p-1 sm:p-2 text-left flex flex-col justify-between transition-all cursor-pointer relative overflow-hidden ${
+                    day.isToday
+                      ? "ring-2 ring-lima bg-lima/[0.12] shadow-[0_0_12px_rgba(199,240,0,0.22)] border-lima/70"
+                      : day.isPast
+                        ? "opacity-90 hover:opacity-100 bg-surface/60 border-line/70 hover:border-foreground/40"
+                        : pStyle.cellBorderClass
                   } ${
                     isSelected
                       ? "ring-2 ring-foreground shadow-md scale-[1.01]"
                       : "hover:border-foreground/50"
-                  } ${day.isToday ? "ring-2 ring-lima" : ""}`}
+                  }`}
                 >
-                  {/* Topo: Data + Ícone principal */}
+                  {/* Topo: Data + Badge/Ícone principal */}
                   <div className="flex items-center justify-between gap-1 w-full">
                     <span
-                      className={`t-data text-[11px] font-semibold leading-none ${
-                        day.isToday ? "text-accent-text" : "text-foreground"
+                      className={`font-mono text-[11px] font-bold leading-none ${
+                        day.isToday ? "text-accent-text" : day.isPast ? "text-foreground/80" : "text-foreground"
                       }`}
                     >
                       <span className="sm:hidden">{day.dateStr.slice(8, 10)}</span>
@@ -1017,22 +1076,30 @@ export function EnergeticCalendarHub({
                       </span>
                     </span>
 
-                    <div className="flex items-center gap-0.5 shrink-0 max-sm:hidden">
-                      {day.isTargetEventDay ? (
+                    <div className="flex items-center gap-1 shrink-0">
+                      {day.isToday && (
+                        <span className="px-1 py-0.2 rounded text-[8px] font-mono font-black bg-lima text-grafite uppercase tracking-wider">
+                          Hoje
+                        </span>
+                      )}
+                      {day.isTargetEventDay && (
                         <Trophy size={12} className="text-emerald-400" />
-                      ) : day.isBlockedByPersonalCommitment ? (
+                      )}
+                      {!day.isToday && !day.isTargetEventDay && day.isBlockedByPersonalCommitment && (
                         <CalendarOff size={11} className="text-amber-400" />
-                      ) : day.isWorkoutDay ? (
-                        <Dumbbell size={11} className="text-foreground/80" />
-                      ) : (
-                        <HeartPulse size={11} className="text-amber-400" />
+                      )}
+                      {!day.isToday && !day.isTargetEventDay && !day.isBlockedByPersonalCommitment && day.isWorkoutDay && (
+                        <Dumbbell size={11} className="text-foreground/80 max-sm:hidden" />
+                      )}
+                      {!day.isToday && !day.isTargetEventDay && !day.isBlockedByPersonalCommitment && !day.isWorkoutDay && (
+                        <HeartPulse size={11} className="text-amber-400 max-sm:hidden" />
                       )}
                     </div>
                   </div>
 
                   {/* Meio: EA Projetado */}
                   <div className="my-1">
-                    <span className="t-data text-xs sm:text-sm font-bold text-foreground block leading-tight">
+                    <span className="font-mono text-xs sm:text-sm font-black text-foreground block leading-tight">
                       {day.projectedEa}
                     </span>
                     <span className="text-[9px] font-mono text-muted hidden sm:block truncate">
@@ -1047,7 +1114,7 @@ export function EnergeticCalendarHub({
                     <div className="flex-1 h-1 rounded-full bg-foreground/10 overflow-hidden">
                       <div
                         className={`h-full rounded-full ${
-                          allDone ? "bg-emerald-400" : pStyle.dotClass
+                          allDone ? "bg-emerald-400 shadow-[0_0_6px_rgba(52,211,153,0.5)]" : pStyle.dotClass
                         }`}
                         style={{
                           width: `${
@@ -1105,6 +1172,40 @@ export function EnergeticCalendarHub({
               </div>
             </div>
 
+            {/* Se o dia selecionado for Hoje: Decisão do Dia & Bateria Integrada */}
+            {selectedDay.isToday && snapshot.dailyDecision && (
+              <div className="rounded-xl border border-profundo/40 bg-lima/10 p-3.5 flex flex-col gap-2">
+                <div className="flex items-center justify-between gap-2">
+                  <span className="t-label !text-accent-text inline-flex items-center gap-1.5">
+                    <Compass size={13} />
+                    <span>Decisão do Seu Dia</span>
+                  </span>
+                  <span className="px-2 py-0.5 rounded-full text-[10px] font-mono font-bold bg-lima text-grafite">
+                    {snapshot.dailyDecision.badgeLabel}
+                  </span>
+                </div>
+                <h4 className="text-xs font-semibold text-foreground">
+                  {snapshot.dailyDecision.headline}
+                </h4>
+                <p className="text-[11px] text-muted leading-relaxed">
+                  {snapshot.dailyDecision.suggestedAction}
+                </p>
+                <div className="pt-2 border-t border-line/60 flex items-center justify-between text-[11px] font-mono">
+                  <span className="text-muted">Bateria Disponível:</span>
+                  <span className="text-accent-text font-bold">
+                    {snapshot.adaptiveProfile?.availableReserveEa ?? progress.currentRealEa} EA
+                  </span>
+                </div>
+                <Link
+                  href="/"
+                  className="btn btn-primary h-8 text-xs font-mono font-bold w-full mt-1 flex items-center justify-center gap-1.5"
+                >
+                  <Play size={12} />
+                  <span>Ir para o Treino de Hoje</span>
+                </Link>
+              </div>
+            )}
+
             {/* Balanço previsto do dia */}
             <div className="grid grid-cols-2 gap-2">
               <div className="rounded-xl border border-line bg-foreground/[0.02] p-2.5">
@@ -1130,11 +1231,11 @@ export function EnergeticCalendarHub({
             {/* Checklist Interativo do Dia */}
             <div className="flex flex-col gap-2.5">
               <div className="flex items-center justify-between">
-                <span className="t-label">
+                <span className="text-[10px] font-mono uppercase tracking-widest text-muted font-bold">
                   Compromissos do Dia ({selectedDay.completedCount}/
                   {selectedDay.totalCommitmentsCount})
                 </span>
-                <span className="t-data text-[11px] text-accent-text font-semibold">
+                <span className="font-mono text-xs text-accent-text font-black">
                   {selectedDay.dailyAdherencePercent}%
                 </span>
               </div>
@@ -1144,8 +1245,8 @@ export function EnergeticCalendarHub({
                   key={item.id}
                   className={`rounded-xl border p-3 flex items-start gap-2.5 transition-all ${
                     item.isCompleted
-                      ? "border-lima bg-lima/10"
-                      : "border-line bg-foreground/[0.02] hover:border-mineral"
+                      ? "border-lima/40 bg-lima/[0.08]"
+                      : "border-line bg-surface hover:border-line-hover"
                   }`}
                 >
                   <button
@@ -1156,10 +1257,10 @@ export function EnergeticCalendarHub({
                     aria-label={`Marcar "${item.titlePt}" como ${
                       item.isCompleted ? "pendente" : "concluído"
                     }`}
-                    className={`w-6 h-6 rounded-lg border flex items-center justify-center shrink-0 mt-0.5 transition-colors cursor-pointer ${
+                    className={`w-6 h-6 rounded-lg border flex items-center justify-center shrink-0 mt-0.5 transition-all cursor-pointer ${
                       item.isCompleted
-                        ? "bg-lima border-lima text-grafite"
-                        : "border-line bg-surface text-transparent hover:border-foreground"
+                        ? "bg-lima border-lima text-grafite shadow-[0_0_8px_rgba(199,240,0,0.35)]"
+                        : "border-line bg-background text-transparent hover:border-foreground/60 shadow-2xs"
                     }`}
                   >
                     <Check size={14} strokeWidth={2.8} />
@@ -1167,27 +1268,32 @@ export function EnergeticCalendarHub({
 
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center justify-between gap-2">
-                      <span className="text-[10px] font-mono uppercase tracking-wider text-muted">
+                      <span className="text-[10px] font-mono uppercase tracking-wider text-accent-text font-bold">
                         {item.timeSlotLabelPt}
                       </span>
                       <span
-                        className={`text-[10px] font-mono font-semibold ${
+                        className={`text-[10px] font-mono font-bold px-1.5 py-0.2 rounded ${
                           item.eaSignedDelta > 0
-                            ? "text-accent-text"
-                            : "text-foreground"
+                            ? "bg-lima/15 text-accent-text"
+                            : "bg-white/10 text-foreground"
                         }`}
                       >
                         {item.eaImpactText}
                       </span>
                     </div>
                     <h4
-                      className={`text-xs font-semibold mt-0.5 leading-snug ${
+                      className={`text-xs font-semibold mt-1 leading-snug flex items-center gap-1.5 flex-wrap ${
                         item.isCompleted
-                          ? "line-through text-muted"
+                          ? "text-foreground"
                           : "text-foreground"
                       }`}
                     >
-                      {item.titlePt}
+                      <span>{item.titlePt}</span>
+                      {item.isCompleted && (
+                        <span className="px-1.5 py-0.2 rounded text-[9px] font-mono font-bold bg-emerald-500/20 text-emerald-400">
+                          Concluído
+                        </span>
+                      )}
                     </h4>
                     <p className="text-[11px] text-muted mt-1 leading-relaxed">
                       {item.detailPt}

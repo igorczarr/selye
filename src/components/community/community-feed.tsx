@@ -120,8 +120,12 @@ export function CommunityFeed({
   );
   const [content, setContent] = useState(activeTag ? `#${activeTag} ` : "");
   const [selectedSessionId, setSelectedSessionId] = useState<string>("");
-  const [selectedTeamId, setSelectedTeamId] = useState<string>("");
-  const [visibility, setVisibility] = useState<"public" | "followers" | "team_only">("public");
+  const [selectedTeamId, setSelectedTeamId] = useState<string>(
+    userTeams[0]?.teamId || ""
+  );
+  const [visibility, setVisibility] = useState<"public" | "followers" | "team_only">(
+    userTeams.length > 0 ? "team_only" : "public"
+  );
   const [showPhotoInput, setShowPhotoInput] = useState(false);
   const [photoUrl, setPhotoUrl] = useState("");
   const [showWorkoutPicker, setShowWorkoutPicker] = useState(false);
@@ -258,18 +262,54 @@ export function CommunityFeed({
       ? trendingTags
       : STARTER_TAGS.map((tag) => ({ tag, count: 0 }));
 
+  if (userTeams.length === 0) {
+    return (
+      <div className="max-w-2xl mx-auto py-8 sm:py-14 px-4 fade-up">
+        <div className="card p-8 sm:p-10 flex flex-col items-center text-center gap-5 border border-line bg-surface/90 backdrop-blur-sm shadow-sm rounded-2xl">
+          <div className="w-16 h-16 rounded-2xl bg-lima/15 border border-lima/30 text-accent-text flex items-center justify-center shadow-inner">
+            <Users size={32} />
+          </div>
+
+          <div className="space-y-2 max-w-lg">
+            <span className="t-label !text-accent-text">Grupos por Treinador</span>
+            <h2 className="text-xl sm:text-2xl font-extrabold text-foreground tracking-tight">
+              Nenhuma Comunidade Ativa
+            </h2>
+            <p className="text-sm text-muted leading-relaxed">
+              No Selye, os grupos da comunidade são restritos exclusivamente aos{" "}
+              <strong className="text-foreground">Teams de cada Personal Trainer e Treinador</strong>.
+            </p>
+            <p className="text-xs text-muted leading-relaxed">
+              Como você ainda não está filiado a nenhuma equipe, sua comunidade permanece inativa. Solicite o link de convite ou código de equipe ao seu personal trainer para ingressar no seu Team e interagir com seu grupo.
+            </p>
+          </div>
+
+          <div className="pt-2 flex flex-col sm:flex-row items-center gap-3 w-full sm:w-auto">
+            <Link
+              href="/equipes"
+              className="btn btn-primary h-10 px-6 text-xs font-mono font-bold w-full sm:w-auto inline-flex items-center justify-center gap-2"
+            >
+              <UserPlus size={15} />
+              <span>Ver Equipes & Ingressar</span>
+            </Link>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start fade-up">
       {/* ================= RAIL ESQUERDA DESKTOP (NAVEGAÇÃO, EQUIPES E REDE) ================= */}
       <aside className="hidden xl:flex xl:col-span-3 flex-col gap-4 sticky top-20">
         <section className="card p-3 flex flex-col gap-1">
-          <span className="t-label px-2.5 pt-1 pb-1.5 block">Feed</span>
+          <span className="t-label px-2.5 pt-1 pb-1.5 block">Feed do Team</span>
           {(
             [
-              { id: "explore", label: "Explorar", icon: Compass },
+              { id: "teams", label: "Meu Team", icon: Users },
+              { id: "threads", label: "Fios do Grupo", icon: MessagesSquare },
               { id: "following", label: "Seguindo", icon: UserCheck },
-              { id: "teams", label: "Equipes", icon: Users },
-              { id: "threads", label: "Fios & Threads", icon: MessagesSquare },
+              { id: "explore", label: "Explorar", icon: Compass },
             ] as const
           ).map((tab) => {
             const Icon = tab.icon;
@@ -389,10 +429,10 @@ export function CommunityFeed({
         >
           {(
             [
-              { id: "explore", label: "Explorar", icon: Compass },
-              { id: "following", label: "Seguindo", icon: UserCheck },
-              { id: "teams", label: "Equipes", icon: Users },
+              { id: "teams", label: "Meu Team", icon: Users },
               { id: "threads", label: "Fios", icon: MessagesSquare },
+              { id: "following", label: "Seguindo", icon: UserCheck },
+              { id: "explore", label: "Explorar", icon: Compass },
             ] as const
           ).map((tab) => {
             const Icon = tab.icon;

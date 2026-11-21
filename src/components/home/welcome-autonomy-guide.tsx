@@ -1,12 +1,11 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { Sparkles, Sun, Compass, Play, X, HelpCircle, CheckCircle2 } from "lucide-react";
+import { Sparkles, Sun, Compass, Play, CheckCircle2 } from "lucide-react";
 
 /**
  * Guia de Boas-Vindas e Autonomia em 3 Passos para Iniciantes e Novos Atletas.
- * Explica de forma 100% humana e acolhedora como aproveitar o Selye no dia a dia,
- * podendo ser reaberto a qualquer momento pelo botão "Como funciona?".
+ * Se dispensado ou já visto uma vez, NÃO persiste na tela principal (retorna null).
  */
 export function WelcomeAutonomyGuide({
   totalCompletedWorkouts = 0,
@@ -23,11 +22,11 @@ export function WelcomeAutonomyGuide({
       if (saved === "true") {
         setDismissed(true);
       } else {
-        // Se tem poucos treinos ou nunca fechou o guia, mostra aberto para acolher
-        setDismissed(totalCompletedWorkouts > 5);
+        // Mostra aberto apenas se é primeira visita absoluta e sem treinos
+        setDismissed(totalCompletedWorkouts > 1);
       }
     } catch {
-      setDismissed(false);
+      setDismissed(true);
     }
   }, [totalCompletedWorkouts]);
 
@@ -40,31 +39,7 @@ export function WelcomeAutonomyGuide({
     }
   };
 
-  const handleReopen = () => {
-    setDismissed(false);
-    try {
-      localStorage.setItem("selye-autonomy-guide-dismissed", "false");
-    } catch {
-      // ignora
-    }
-  };
-
-  if (!mounted) return null;
-
-  if (dismissed) {
-    return (
-      <div className="flex items-center justify-end -mb-2">
-        <button
-          type="button"
-          onClick={handleReopen}
-          className="inline-flex items-center gap-1.5 text-[11px] font-mono text-muted hover:text-foreground transition-colors cursor-pointer"
-        >
-          <HelpCircle size={13} className="text-accent-text" />
-          <span>Novo por aqui? Veja como o Selye funciona em 3 passos</span>
-        </button>
-      </div>
-    );
-  }
+  if (!mounted || dismissed) return null;
 
   return (
     <section
@@ -78,10 +53,10 @@ export function WelcomeAutonomyGuide({
             <span>Simples, Humano & Feito para o Seu Ritmo</span>
           </span>
           <h2 className="t-h3 mt-0.5 text-foreground">
-            Como aproveitar o Selye todos os dias (mesmo começando do zero)
+            Como aproveitar o Selye todos os dias
           </h2>
           <p className="text-xs text-muted mt-0.5">
-            Você não precisa entender termos técnicos. Nós traduzimos os sinais do seu corpo para você evoluir com autonomia e segurança:
+            Você não precisa entender termos técnicos. Nós traduzimos os sinais do seu corpo para você evoluir com segurança:
           </p>
         </div>
 
@@ -107,7 +82,7 @@ export function WelcomeAutonomyGuide({
               <span>Conte como acordou</span>
             </h3>
             <p className="text-[11px] text-muted mt-1 leading-relaxed">
-              Clique em <strong>Check-in Matinal</strong> logo abaixo e marque em 4 toques como foi seu sono e sua energia.
+              Clique em <strong>Check-in Matinal</strong> e marque em 4 toques como foi seu sono e sua energia.
             </p>
           </div>
         </div>
@@ -122,7 +97,7 @@ export function WelcomeAutonomyGuide({
               <span>Siga a Orientação do Dia</span>
             </h3>
             <p className="text-[11px] text-muted mt-1 leading-relaxed">
-              Veja sua <strong>Bateria do Corpo (EA)</strong>: o Selye avisa se hoje é dia de treinar forte, ir moderado ou descansar sem culpa.
+              Veja sua <strong>Bateria do Corpo (EA)</strong>: o Selye avisa se hoje é dia de treinar forte, ir moderado ou descansar.
             </p>
           </div>
         </div>
@@ -137,7 +112,7 @@ export function WelcomeAutonomyGuide({
               <span>Treine ou Registre Livre</span>
             </h3>
             <p className="text-[11px] text-muted mt-1 leading-relaxed">
-              Escolha uma ficha pronta (com vídeos passo a passo) ou clique em <strong>Registrar Atividade</strong> no topo para qualquer esporte.
+              Escolha uma ficha pronta (com vídeos passo a passo) ou clique em <strong>Registrar Atividade</strong> para qualquer esporte.
             </p>
           </div>
         </div>

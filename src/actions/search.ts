@@ -25,6 +25,7 @@ export interface GlobalSearchSnapshot {
     primaryModality: CoreModalityCode;
     complementaryModalities: CoreModalityCode[];
   };
+  hasActiveCommunity: boolean;
   activeSession: {
     id: string;
     title: string;
@@ -78,6 +79,8 @@ export async function getGlobalShellSnapshot(): Promise<GlobalSearchSnapshot> {
       activityRows,
       goalRows,
       streakRows,
+      userMembershipRows,
+      ownedTeamRows,
     ] = await Promise.all([
       db
         .select({
@@ -166,6 +169,21 @@ export async function getGlobalShellSnapshot(): Promise<GlobalSearchSnapshot> {
         .from(schema.streaks)
         .where(eq(schema.streaks.userId, user.id))
         .limit(1),
+      db
+        .select({ id: schema.teamMemberships.id })
+        .from(schema.teamMemberships)
+        .where(
+          and(
+            eq(schema.teamMemberships.userId, user.id),
+            eq(schema.teamMemberships.status, "active")
+          )
+        )
+        .limit(1),
+      db
+        .select({ id: schema.teams.id })
+        .from(schema.teams)
+        .where(eq(schema.teams.ownerId, user.id))
+        .limit(1),
     ]);
 
     const sortedRoutines = sortRoutinesChronologically(routinesRows);
@@ -219,6 +237,9 @@ export async function getGlobalShellSnapshot(): Promise<GlobalSearchSnapshot> {
       // mantém valores padrão
     }
 
+    const hasActiveCommunity =
+      userMembershipRows.length > 0 || ownedTeamRows.length > 0;
+
     return {
       userName: user.name || "Atleta",
       currentWeeklyStreak,
@@ -227,6 +248,7 @@ export async function getGlobalShellSnapshot(): Promise<GlobalSearchSnapshot> {
       availableReserveEa,
       personalCapacityEa,
       athleteModalityProfile,
+      hasActiveCommunity,
       activeSession: active
         ? {
             id: active.id,
@@ -264,6 +286,7 @@ export async function getGlobalShellSnapshot(): Promise<GlobalSearchSnapshot> {
         primaryModality: "strength",
         complementaryModalities: [],
       },
+      hasActiveCommunity: false,
       activeSession: null,
       routines: [],
       exercises: [],

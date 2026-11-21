@@ -410,9 +410,328 @@ function buildWeeklySessionDistribution(params: {
 }
 
 /**
- * Planeja o Calendário Integrado por Modalidade + Fichas Reais + Curva de Prontidão (EA).
- * Remove definitivamente os compromissos genéricos X/Y/Z.
+ * Gera compromissos e hábitos reais, científicos e não-mecânicos, alinhados à modalidade,
+ * ao KPI visado, à fase do ciclo e ao estímulo específico de cada dia.
+ * Supera protocolos genéricos (como "beber água e dormir todos os dias"),
+ * trazendo prehab articular, termorregulação de sódio, descompressão axial,
+ * stiffness tendíneo e modulação autonômica do SNC.
  */
+function generateTargetedDailyHabits(params: {
+  dateStr: string;
+  dayIdx: number;
+  jsDay: number;
+  modalityCode: CoreModalityCode;
+  complementaryModalityCode: CoreModalityCode | null;
+  phase: EnergeticCyclePhase;
+  isWorkoutDay: boolean;
+  isEventDay: boolean;
+  isBlocked: boolean;
+  archetypeCode?: string;
+  shortNamePt: string;
+}): DailyPlannedCommitment[] {
+  const {
+    dateStr,
+    dayIdx,
+    modalityCode,
+    phase,
+    isWorkoutDay,
+    isEventDay,
+    isBlocked,
+    archetypeCode,
+    shortNamePt,
+  } = params;
+
+  if (isEventDay) {
+    return [
+      {
+        id: `hab_comp_prime_${dateStr}`,
+        kind: "recharge_habit",
+        titlePt: "Ativação Neural & Timing de Carboidrato Pré-Competição",
+        detailPt:
+          "Ingestão de 30–45g de carboidratos de rápida absorção 45 min antes e ativação com mobilidade articular dinâmica para pico de prontidão neuromuscular.",
+        timeSlotLabelPt: "Pré-Prova",
+        eaImpactText: "+80 EA",
+        eaSignedDelta: 80,
+        activityClass: "recovery",
+      },
+    ];
+  }
+
+  if (isBlocked) {
+    return [
+      {
+        id: `hab_block_absorb_${dateStr}`,
+        kind: "recharge_habit",
+        titlePt: "Downtime Neural & Hidratação de Base (Janela Livre)",
+        detailPt:
+          "Aproveite a pausa na rotina para descompressão mental e restauração do tônus vagal parassimpático.",
+        timeSlotLabelPt: "Absorção",
+        eaImpactText: "+90 EA",
+        eaSignedDelta: 90,
+        activityClass: "recovery",
+      },
+    ];
+  }
+
+  // Se estiver na fase de polimento (peak) antes do dia-alvo:
+  if (phase === "peak") {
+    const peakHabits: DailyPlannedCommitment[] = [
+      {
+        id: `hab_peak_carb_${dateStr}`,
+        kind: "recharge_habit",
+        titlePt: "Supercompensação de Glicogênio & Hidratação Celular",
+        detailPt:
+          "Aporte gradual de carboidratos limpos e água eletrolítica para maximizar as reservas intramusculares sem sensação de peso gástrico.",
+        timeSlotLabelPt: "Estratégico",
+        eaImpactText: "+110 EA",
+        eaSignedDelta: 110,
+        activityClass: "recovery",
+      },
+      {
+        id: `hab_peak_mind_${dateStr}`,
+        kind: "recharge_habit",
+        titlePt: "Ancoragem Cognitiva & Visualização de Ritmo (12 min)",
+        detailPt:
+          "Visualização dos momentos críticos da prova/partida e ancoragem de calma para modular a adrenalina antecipatória.",
+        timeSlotLabelPt: "Foco Mental",
+        eaImpactText: "+75 EA",
+        eaSignedDelta: 75,
+        activityClass: "recovery",
+      },
+    ];
+    return [peakHabits[dayIdx % peakHabits.length]];
+  }
+
+  // Catálogo de compromissos específicos por modalidade e contexto do dia:
+  if (modalityCode === "beach_volleyball") {
+    if (isWorkoutDay) {
+      const isPowerDay = archetypeCode === "bv_lower_power";
+      const isShoulderDay = archetypeCode === "bv_shoulder_core";
+
+      if (isPowerDay) {
+        return [
+          {
+            id: `hab_bv_tendon_${dateStr}`,
+            kind: "recharge_habit",
+            titlePt: "Blindagem de Tendão Patelar & Isometria (Spanish Squat 3×45s)",
+            detailPt:
+              "Estimula a síntese de colágeno no polo inferior da patela e eleva a tolerância à desaceleração em aterrissagens profundas na areia (Rio et al., 2015).",
+            timeSlotLabelPt: "Pré/Pós Salto",
+            eaImpactText: "+85 EA",
+            eaSignedDelta: 85,
+            activityClass: "recovery",
+          },
+        ];
+      }
+      if (isShoulderDay || dayIdx % 2 === 0) {
+        return [
+          {
+            id: `hab_bv_shoulder_${dateStr}`,
+            kind: "recharge_habit",
+            titlePt: "Blindagem de Manguito Rotador & Estabilidade Escapular (Y-T-W)",
+            detailPt:
+              "Fortalecimento excêntrico de rotadores externos e trapézio inferior para absorver a desaceleração de saques e ataques na areia (Cools et al., 2015).",
+            timeSlotLabelPt: "Ativação",
+            eaImpactText: "+80 EA",
+            eaSignedDelta: 80,
+            activityClass: "recovery",
+          },
+        ];
+      }
+      // Dia de jogo ou ralis na areia:
+      return [
+        {
+          id: `hab_bv_electrolytes_${dateStr}`,
+          kind: "recharge_habit",
+          titlePt: "Reposição Eletrolítica de Sódio em Areia/Calor (500–700mg Na+)",
+          detailPt:
+            "Hidratação isotônica para termorregulação e manutenção da velocidade de condução neural, evitando câimbras e queda de impulsão no 3º set.",
+          timeSlotLabelPt: "Intra/Pós Areia",
+          eaImpactText: "+75 EA",
+          eaSignedDelta: 75,
+          activityClass: "recovery",
+        },
+      ];
+    } else {
+      // Dia de descanso / absorção no Vôlei de Praia
+      const restHabits: DailyPlannedCommitment[] = [
+        {
+          id: `hab_bv_foot_mob_${dateStr}`,
+          kind: "recharge_habit",
+          titlePt: "Mobilidade de Tornozelo & Soltura da Fáscia Plantar / Sóleo",
+          detailPt:
+            "Liberação dos estabilizadores do tornozelo e dedos do pé para neutralizar o estresse mecânico acumulado na areia instável.",
+          timeSlotLabelPt: "Recuperação",
+          eaImpactText: "+90 EA",
+          eaSignedDelta: 90,
+          activityClass: "recovery",
+        },
+        {
+          id: `hab_bv_neural_${dateStr}`,
+          kind: "recharge_habit",
+          titlePt: "Downtime Neural do SNC: Respiração Diafragmática 4-7-8 (10 min)",
+          detailPt:
+            "Desativação parassimpática para dissipar a fadiga central acumulada após treinos de explosão e potência de salto.",
+          timeSlotLabelPt: "Noite",
+          eaImpactText: "+110 EA",
+          eaSignedDelta: 110,
+          activityClass: "recovery",
+        },
+      ];
+      return [restHabits[dayIdx % restHabits.length]];
+    }
+  }
+
+  if (modalityCode === "running") {
+    if (isWorkoutDay) {
+      const isLong = archetypeCode === "run_long";
+      if (isLong) {
+        return [
+          {
+            id: `hab_run_glycogen_${dateStr}`,
+            kind: "recharge_habit",
+            titlePt: "Janela de Glicogênio & Carboidrato Pós-Longão (1.0–1.2g/kg)",
+            detailPt:
+              "Reposição imediata de glicogênio muscular e eletrólitos nas primeiras 2h para proteger o sistema imunológico e manter prontidão semanal.",
+            timeSlotLabelPt: "Pós-Longão",
+            eaImpactText: "+85 EA",
+            eaSignedDelta: 85,
+            activityClass: "recovery",
+          },
+        ];
+      }
+      return [
+        {
+          id: `hab_run_achilles_${dateStr}`,
+          kind: "recharge_habit",
+          titlePt: "Fortalecimento Isométrico de Tendão de Aquiles & Sóleo (3×40s)",
+          detailPt:
+            "Aumenta o stiffness elástico do tendão de Aquiles, aprimorando diretamente a economia de corrida (Running Economy) (Blagrove et al., 2018).",
+          timeSlotLabelPt: "Biomecânica",
+          eaImpactText: "+80 EA",
+          eaSignedDelta: 80,
+          activityClass: "recovery",
+        },
+      ];
+    } else {
+      const restHabits: DailyPlannedCommitment[] = [
+        {
+          id: `hab_run_flush_${dateStr}`,
+          kind: "recharge_habit",
+          titlePt: "Drenagem Metabólica de Pernas (Banho de Contraste ou Elevação 15 min)",
+          detailPt:
+            "Estimula o retorno venoso e a remoção de metabólitos intramusculares após dias de impacto contínuo.",
+          timeSlotLabelPt: "Recuperação",
+          eaImpactText: "+95 EA",
+          eaSignedDelta: 95,
+          activityClass: "recovery",
+        },
+        {
+          id: `hab_run_itb_mob_${dateStr}`,
+          kind: "recharge_habit",
+          titlePt: "Estabilidade Pélvica com Miniband & Soltura do Trato Iliotibial",
+          detailPt:
+            "Prevenção do valgo dinâmico e atrito da banda iliotibial (ITB) no côndilo femoral lateral.",
+          timeSlotLabelPt: "Prehab",
+          eaImpactText: "+85 EA",
+          eaSignedDelta: 85,
+          activityClass: "recovery",
+        },
+      ];
+      return [restHabits[dayIdx % restHabits.length]];
+    }
+  }
+
+  if (modalityCode === "strength" || modalityCode === "calisthenics" || modalityCode === "functional") {
+    if (isWorkoutDay) {
+      if (dayIdx % 2 === 0) {
+        return [
+          {
+            id: `hab_str_spine_${dateStr}`,
+            kind: "recharge_habit",
+            titlePt: "Descompressão Axial de Coluna em Barra Fixa (Dead Hang 2×60s)",
+            detailPt:
+              "Alivia a pressão discal intervertebral acumulada sob carga axial e reidrata os discos lombares pós-agachamento/terra.",
+            timeSlotLabelPt: "Pós-Treino",
+            eaImpactText: "+80 EA",
+            eaSignedDelta: 80,
+            activityClass: "recovery",
+          },
+        ];
+      }
+      return [
+        {
+          id: `hab_str_protein_${dateStr}`,
+          kind: "recharge_habit",
+          titlePt: "Distribuição Proteica em Pulsos de 0.4g/kg com Leucina",
+          detailPt:
+            "Estimula a via mTOR em intervalos de 3–4h para taxa ótima de síntese proteica miofibrilar e adaptação estrutural (Morton et al., 2018).",
+          timeSlotLabelPt: "Nutrição",
+          eaImpactText: "+85 EA",
+          eaSignedDelta: 85,
+          activityClass: "recovery",
+        },
+      ];
+    } else {
+      const restHabits: DailyPlannedCommitment[] = [
+        {
+          id: `hab_str_hip_mob_${dateStr}`,
+          kind: "recharge_habit",
+          titlePt: "Mobilidade de Quadril 90/90 & Soltura de Psoas / Cadeia Posterior",
+          detailPt:
+            "Restaura a rotação interna/externa de quadril e previne retroversão pélvica sob agachamento pesado.",
+          timeSlotLabelPt: "Recuperação",
+          eaImpactText: "+90 EA",
+          eaSignedDelta: 90,
+          activityClass: "recovery",
+        },
+        {
+          id: `hab_str_cns_down_${dateStr}`,
+          kind: "recharge_habit",
+          titlePt: "Downtime Neural do SNC & Sono com Higiene Circadiana (8h)",
+          detailPt:
+            "Potencializa os picos noturnos de GH e testosterona, regenerando o sistema neuromuscular pós-cargas elevadas.",
+          timeSlotLabelPt: "Noite",
+          eaImpactText: "+110 EA",
+          eaSignedDelta: 110,
+          activityClass: "recovery",
+        },
+      ];
+      return [restHabits[dayIdx % restHabits.length]];
+    }
+  }
+
+  // Modalidades gerais (ciclismo, futebol, lutas, etc.):
+  if (isWorkoutDay) {
+    return [
+      {
+        id: `hab_spec_prehab_${dateStr}`,
+        kind: "recharge_habit",
+        titlePt: `Ativação Articular Específica para ${shortNamePt} (10–12 min)`,
+        detailPt:
+          "Prepara as cadeias biomecânicas mais exigidas pela modalidade, aumentando prontidão e reduzindo o risco de sobrecarga pontual.",
+        timeSlotLabelPt: "Pré-Treino",
+        eaImpactText: "+80 EA",
+        eaSignedDelta: 80,
+        activityClass: "recovery",
+      },
+    ];
+  } else {
+    return [
+      {
+        id: `hab_spec_rest_${dateStr}`,
+        kind: "recharge_habit",
+        titlePt: `Recuperação Ativa & Modulação Autonômica para ${shortNamePt}`,
+        detailPt:
+          "Soltura miofascial e caminhada leve com respiração cadenciada para drenagem de fadiga e assimilação do bloco de treino.",
+        timeSlotLabelPt: "Recuperação",
+        eaImpactText: "+95 EA",
+        eaSignedDelta: 95,
+        activityClass: "recovery",
+      },
+    ];
+  }
+}
 export function planEnergeticGrowthCurve(
   input: EnergeticGrowthPlanInput
 ): EnergeticGrowthPlanResult {
@@ -711,45 +1030,23 @@ export function planEnergeticGrowthCurve(
       });
     }
 
-    // Protocolo de recarga contextual (+EA) coerente com o dia
-    const recoveryMod = dayIdx % 3;
-    if (recoveryMod === 0) {
-      commitments.push({
-        id: `hab_sleep_${dateStr}`,
-        kind: "recharge_habit",
-        titlePt: "Sono Restaurador (7h30–8h+)",
-        detailPt:
-          "Consolida adaptações neuromusculares e protege sua curva de EA (Walsh et al., 2021).",
-        timeSlotLabelPt: "Noite",
-        eaImpactText: "+110 EA",
-        eaSignedDelta: 110,
-        activityClass: "recovery",
-      });
-    } else if (recoveryMod === 1) {
-      commitments.push({
-        id: `hab_mob_${dateStr}`,
-        kind: "recharge_habit",
-        titlePt: `Mobilidade & Soltura para ${spec.shortNamePt} (12–15 min)`,
-        detailPt:
-          "Liberação miofascial e amplitude articular nas articulações mais exigidas pela sua modalidade.",
-        timeSlotLabelPt: "Recuperação",
-        eaImpactText: "+80 EA",
-        eaSignedDelta: 80,
-        activityClass: "recovery",
-      });
-    } else {
-      commitments.push({
-        id: `hab_hyd_${dateStr}`,
-        kind: "recharge_habit",
-        titlePt: "Hidratação (35–40 ml/kg) & Nutrição Pós-Treino",
-        detailPt:
-          "Reposição de glicogênio, proteína e eletrólitos para manter prontidão no treino seguinte.",
-        timeSlotLabelPt: "Dia",
-        eaImpactText: "+70 EA",
-        eaSignedDelta: 70,
-        activityClass: "recovery",
-      });
-    }
+    // Protocolos direcionados de recuperação, prehab, eletrólitos & downtime neural alinhados à modalidade e ao KPI
+    const targetedHabits = generateTargetedDailyHabits({
+      dateStr,
+      dayIdx,
+      jsDay,
+      modalityCode,
+      complementaryModalityCode: input.complementaryModalityCode || null,
+      phase,
+      isWorkoutDay,
+      isEventDay,
+      isBlocked,
+      archetypeCode: isWorkoutDay
+        ? (slotByJsDay.get(jsDay) || weeklySlots[dayIdx % weeklySlots.length])?.archetypeCode
+        : undefined,
+      shortNamePt: spec.shortNamePt,
+    });
+    commitments.push(...targetedHabits);
 
     dailySchedule.push({
       dateStr,

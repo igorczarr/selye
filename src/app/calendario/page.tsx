@@ -42,7 +42,7 @@ export default function CalendarioPage() {
   return (
     <div className="min-h-screen bg-background text-foreground flex flex-col pb-24">
       <Navbar />
-      <main className="selye-container py-6 flex-1">
+      <main className="selye-container py-7 sm:py-9 flex-1">
         <Suspense fallback={<CalendarSkeleton />}>
           <CalendarLoader />
         </Suspense>

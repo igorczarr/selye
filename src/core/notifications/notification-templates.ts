@@ -138,34 +138,33 @@ export function buildNotificationEventPayload(
       const headline =
         params.decisionHeadline ||
         (score >= 75
-          ? "Sinal Verde: seu corpo está pronto para um ótimo dia"
+          ? "Sinal Verde: corpo pronto para render"
           : score >= 55
-            ? "Ritmo Moderado: priorize a qualidade do movimento sem exagerar"
-            : "Dia de Cuidado: seu corpo pede recuperação ativa e leveza");
-      const title = `Leitura do Dia (${score}/100): ${headline}`;
-      const body = `Com base em como você dormiu e como está se sentindo hoje, calibramos sua recomendação diária para você treinar com segurança e autonomia.`;
+            ? "Ritmo Moderado: priorize movimento consciente"
+            : "Recuperação Ativa: seu corpo pede leveza hoje");
+      const title = `Prontidão de Hoje (${score}/100): ${headline}`;
+      const body = `Orientação calibrada com seus sinais corporais para você treinar com autonomia.`;
       return {
         category: "recovery",
         title,
         body,
         actionUrl: "/",
         shouldSendEmailByDefault: true,
-        emailSubject: `☀️ Sua Decisão do Dia no Selye (${score}/100)`,
+        emailSubject: `☀️ Sua prontidão hoje no Selye (${score}/100)`,
         emailTemplate: {
           recipientName: name,
           category: "recovery",
-          badgeText: "Leitura Matinal",
+          badgeText: "Energia do Dia",
           headline,
           bodyParagraphs: [
-            `Obrigado por compartilhar como você acordou hoje. Ouvir os sinais do próprio corpo é o segredo das pessoas que mantêm a constância o ano inteiro sem se machucar.`,
-            `Confira abaixo a pontuação da sua disposição hoje e siga a orientação sugerida no seu painel.`,
+            `Sua prontidão está calibrada para hoje. Ouça os sinais do seu corpo e mantenha a consistência.`,
           ],
           highlightBox: {
             label: "Sua Disposição Hoje",
             value: `${score} / 100`,
             subtext: body,
           },
-          ctaLabel: "Abrir meu plano de hoje",
+          ctaLabel: "Abrir meu painel",
           ctaUrl: "/",
         },
       };

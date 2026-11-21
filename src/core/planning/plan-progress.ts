@@ -119,9 +119,17 @@ export function reconcileEnergeticPlanProgress(input: {
   todayDateStr: string;
   completedCommitmentKeys: Iterable<string>;
   customCommitments?: StoredCalendarCommitmentInput[];
+  finishedSessionDates?: string[];
+  historicalCheckins?: Array<{
+    localDate: string;
+    kind: string;
+    commitmentKey: string;
+    completed: boolean;
+  }>;
 }): EnergeticPlanLiveProgress {
   const { plan, todayDateStr } = input;
   const completedSet = new Set(input.completedCommitmentKeys);
+  const finishedSessionDatesSet = new Set(input.finishedSessionDates || []);
   const customByDate = new Map<string, StoredCalendarCommitmentInput[]>();
 
   for (const c of input.customCommitments || []) {
@@ -136,13 +144,34 @@ export function reconcileEnergeticPlanProgress(input: {
   const enrichedDays: EnrichedCalendarDay[] = plan.dailySchedule.map((day) => {
     const isToday = day.dateStr === todayDateStr;
     const isPast = day.dateStr < todayDateStr;
+    const hasFinishedSessionOnDay = finishedSessionDatesSet.has(day.dateStr);
 
     const baseCommitments: EnrichedDailyCommitment[] = day.commitments.map(
-      (c) => ({
-        ...c,
-        isCompleted: completedSet.has(c.id),
-        isCustom: false,
-      })
+      (c) => {
+        let isCompleted = completedSet.has(c.id);
+
+        if (!isCompleted && c.kind === "workout" && hasFinishedSessionOnDay) {
+          isCompleted = true;
+        }
+
+        if (!isCompleted && input.historicalCheckins) {
+          const match = input.historicalCheckins.find(
+            (h) =>
+              h.localDate === day.dateStr &&
+              h.completed &&
+              (h.commitmentKey === c.id || h.kind === c.kind)
+          );
+          if (match) {
+            isCompleted = true;
+          }
+        }
+
+        return {
+          ...c,
+          isCompleted,
+          isCustom: false,
+        };
+      }
     );
 
     const customsForDay = customByDate.get(day.dateStr) || [];
