@@ -16,6 +16,7 @@ async function RoutinesList() {
       routines={data.routines}
       activeSession={data.activeSession}
       todayCompletedSessions={data.todayCompletedSessions}
+      activeDaysInYear={data.stats.activeDaysInYear}
       athletePrimaryModality={athleteCtx.primaryModality}
       experienceLevel={athleteCtx.experienceLevel}
     />

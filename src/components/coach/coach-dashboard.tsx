@@ -3,6 +3,7 @@
 import { useState, useTransition } from "react";
 import Link from "next/link";
 import { publishProgramVersion } from "@/actions/coach";
+import { HealthyHabitsManager } from "@/components/profile/healthy-habits-manager";
 import {
   Users,
   FileText,
@@ -196,6 +197,16 @@ export function CoachDashboard({ data }: CoachDashboardProps) {
           </table>
         </div>
       </section>
+
+      {/* Prescrição de Hábitos Saudáveis Diários para o Aluno */}
+      {data.primaryAthleteHabits && (
+        <HealthyHabitsManager
+          snapshot={data.primaryAthleteHabits}
+          targetUserId={data.primaryAthleteId}
+          createdByRole="coach"
+          compactTitle="Prescrição de Hábitos Saudáveis Diários"
+        />
+      )}
 
       {/* Gestão de Programações e Versionamento */}
       <section className="card p-6 flex flex-col gap-4">

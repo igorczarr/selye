@@ -12,3 +12,4 @@ export * from "./notifications";
 export * from "./integrations";
 export * from "./planning";
 export * from "./kpi";
+export * from "./habits";

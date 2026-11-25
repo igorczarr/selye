@@ -9,6 +9,8 @@ import {
   exportUserData,
 } from "@/actions/profile";
 import { ConditionArrowBadge } from "@/components/ui/condition-arrow-badge";
+import { HealthyHabitsManager } from "@/components/profile/healthy-habits-manager";
+import type { HealthyHabitsSnapshot } from "@/core/habits/healthy-habits-catalog";
 import { MODALITY_REGISTRY, resolveCoreModalityCode } from "@/core/modalities";
 import {
   Lock,
@@ -41,6 +43,7 @@ interface ProfileViewProps {
       modelConfidencePercent?: number;
       learningStageLabel?: string;
     };
+    healthyHabits?: HealthyHabitsSnapshot;
   };
 }
 
@@ -186,9 +189,14 @@ export function ProfileView({ data }: ProfileViewProps) {
         </div>
       </section>
 
-      {/* Grade Bento do Perfil: Esquerda (Conquistas + Modalidades) · Direita (Biometria Privada) */}
+      {/* Grade Bento do Perfil: Esquerda (Hábitos + Conquistas + Modalidades) · Direita (Biometria Privada) */}
       <div className="bento-grid items-start">
         <div className="col-span-12 xl:col-span-7 flex flex-col gap-6">
+          {/* Hábitos Saudáveis Diários (Configuração por Eixo + Cadastro Personalizado) */}
+          {data.healthyHabits && (
+            <HealthyHabitsManager snapshot={data.healthyHabits} />
+          )}
+
           {/* Conquistas & Marcos Esportivos */}
           <section className="card p-6 flex flex-col gap-4">
         <div className="flex items-center justify-between">

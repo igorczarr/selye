@@ -151,6 +151,39 @@ export interface HistoricalCheckinSample {
 
 import type { EaOnboardingCalibrationResult } from "./ea-onboarding-calibrator";
 
+export interface DailyHabitRechargeSample {
+  localDate: string; // YYYY-MM-DD
+  labelPt: string;
+  eaImpact: number;
+}
+
+export interface RealWorldEnergyFactor {
+  id: string;
+  labelPt: string;
+  valuePt: string;
+  explanationPt: string;
+  tone: "positive" | "neutral" | "caution";
+}
+
+export interface RealWorldEnergyContext {
+  /** Carga bruta acumulada nos últimos 7 dias antes da dissipação circadiana */
+  raw7DayDrainEa: number;
+  /** Energia já restaurada naturalmente por noites de sono e metabolismo basal (meia-vida da fadiga) */
+  circadianClearedEa: number;
+  /** Percentual da fadiga da semana que já foi dissipado pelo tempo e sono */
+  circadianClearedPercent: number;
+  /** Fadiga residual aguda que ainda atua no corpo hoje */
+  residualAcuteDrainEa: number;
+  /** Dias desde o último treino registrado (null se sem treinos recentes) */
+  daysSinceLastWorkout: number | null;
+  /** Título curto da sensação corporal esperada hoje */
+  feelingHeadlinePt: string;
+  /** Argumento real do dia a dia explicando por que a pessoa se sente com essa energia hoje */
+  realLifeArgumentPt: string;
+  /** Pilares objetivos que explicam o saldo de hoje */
+  factors: RealWorldEnergyFactor[];
+}
+
 export interface AthleteMLInput {
   experienceLevel?: "beginner" | "intermediate" | "advanced" | "competitive" | string | null;
   targetDaysPerWeek: number;
@@ -159,6 +192,7 @@ export interface AthleteMLInput {
   sessionsLast28Days: HistoricalSessionSample[];
   checkinsLast28Days: HistoricalCheckinSample[];
   recoveryAttitudesLast7Days: LoggedRecoveryAttitude[];
+  dailyHabitRechargesLast7Days?: DailyHabitRechargeSample[];
   todayDateStr: string;
   /** Calibração científica de onboarding (§Fase 2) — substitui o cold-start heurístico */
   eaCalibration?: Pick<
@@ -218,6 +252,8 @@ export interface AdaptiveAthleteMLProfile {
   ledgerEntries: EnergyLedgerEntry[];
   /** Atitudes regenerativas já registradas hoje */
   todayLoggedAttitudes: RecoveryAttitudeCode[];
+  /** Contexto fisiológico real e argumentos explicáveis do dia a dia para o saldo atual */
+  energyContext: RealWorldEnergyContext;
 }
 
 function clamp(val: number, min: number, max: number): number {
@@ -391,15 +427,25 @@ export function learnAdaptiveAthleteProfile(
     clamp(blendedBaseCapacity * effectiveAlphaScale, 650, 3800)
   );
 
-  // 4. Balanço Bidirecional dos Últimos 7 Dias (-EA de Treino/Estresse vs. +EA de Regeneração)
+  // 4. Balanço Fisiológico Normalizado com Meia-Vida Circadiana da Fadiga (Banister / Busso)
+  // Um treino feito há 3, 4 ou 5 dias NÃO drena 100% da bateria de hoje: cada noite de sono
+  // dissipa exponencialmente a fadiga periférica e central (τ ≈ 1.65 × α_u dias, meia-vida ~28–32h).
   const ledgerEntries: EnergyLedgerEntry[] = [];
-  let trainingDrainEa = 0;
+  let raw7DayDrainEa = 0;
+  let residualAcuteDrainEa = 0;
   let recoveryRechargeEa = 0;
 
   const activeDaysLast7 = new Set<string>();
+  let minDaysSinceWorkout: number | null = null;
+  const tauDecayDays = 1.65 * recoveryVelocityMultiplier;
 
   for (const s of input.sessionsLast28Days) {
-    if (daysBetween(s.date, input.todayDateStr) < 7) {
+    const ageDays = daysBetween(s.date, input.todayDateStr);
+    if (minDaysSinceWorkout === null || ageDays < minDaysSinceWorkout) {
+      minDaysSinceWorkout = ageDays;
+    }
+
+    if (ageDays < 7) {
       activeDaysLast7.add(s.date);
       const eff = modalityEfficiencyMap[s.modalityCode] ?? 1.0;
 
@@ -420,18 +466,41 @@ export function learnAdaptiveAthleteProfile(
           category: "habit_recharge",
         });
       } else {
-        const adjustedDrain = Math.round(s.rawLoadEa * eff);
-        trainingDrainEa += adjustedDrain;
+        const rawAdjusted = Math.round(s.rawLoadEa * eff);
+        // Compressão logarítmica para sessões muito longas (>520 EA, ex: 2–3h),
+        // evitando que uma única sessão longa seja tratada como colapso neural linear.
+        const normalizedSingleDrain =
+          rawAdjusted <= 520
+            ? rawAdjusted
+            : 520 + Math.round(170 * Math.log(1 + (rawAdjusted - 520) / 220));
+
+        raw7DayDrainEa += rawAdjusted;
+
+        // Peso residual da fadiga aguda hoje após `ageDays` noites de restauração circadiana
+        const residualWeight =
+          ageDays <= 0 ? 1.0 : Math.exp(-ageDays / tauDecayDays);
+        const residualDrain = Math.round(normalizedSingleDrain * residualWeight);
+        residualAcuteDrainEa += residualDrain;
+
         ledgerEntries.push({
           id: `drain_sess_${s.date}_${ledgerEntries.length}`,
-          labelPt: `Treino (${s.durationMinutes} min · RPE ${s.rpe})`,
+          labelPt:
+            ageDays === 0
+              ? `Treino Hoje (${s.durationMinutes} min · RPE ${s.rpe})`
+              : `Residual há ${ageDays}d (${s.durationMinutes} min · RPE ${s.rpe})`,
           date: s.date,
-          deltaEa: -adjustedDrain,
+          deltaEa: -residualDrain,
           category: "workout_drain",
         });
       }
     }
   }
+
+  const circadianClearedEa = Math.max(0, raw7DayDrainEa - residualAcuteDrainEa);
+  const circadianClearedPercent =
+    raw7DayDrainEa > 0
+      ? clamp(Math.round((circadianClearedEa / raw7DayDrainEa) * 100), 0, 96)
+      : 100;
 
   // Impacto do Check-in Matinal nos últimos 7 dias: dormir e acordar sempre representa recuperação noturna (+EA),
   // nunca um dreno que reduz a EA do usuário ao preencher o check-in pela manhã.
@@ -493,27 +562,169 @@ export function learnAdaptiveAthleteProfile(
     }
   }
 
-  // Dias de Supercompensação (dias sem treino após estímulo nos últimos 7 dias geram recarga biológica natural)
-  if (activeDaysLast7.size > 0 && activeDaysLast7.size < 7) {
-    const restDaysCount = Math.min(3, 7 - activeDaysLast7.size);
-    const restBonusPerDay = Math.round(45 * recoveryVelocityMultiplier);
-    const totalRestBonus = restDaysCount * restBonusPerDay;
-    recoveryRechargeEa += totalRestBonus;
+  // Hábitos Saudáveis Diários concluídos pelo usuário (+EA)
+  let healthyHabitsBonusEa = 0;
+  for (const hab of input.dailyHabitRechargesLast7Days || []) {
+    const age = daysBetween(hab.localDate, input.todayDateStr);
+    if (age < 7 && hab.eaImpact > 0) {
+      const weight = age === 0 ? 1.0 : age === 1 ? 0.6 : 0.3;
+      const gain = Math.round(hab.eaImpact * weight * recoveryGainMultiplier);
+      healthyHabitsBonusEa += gain;
+      recoveryRechargeEa += gain;
+    }
+  }
+  if (healthyHabitsBonusEa > 0) {
     ledgerEntries.push({
-      id: `supercomp_${input.todayDateStr}`,
-      labelPt: `Supercompensação Natural (${restDaysCount}d de descanso)`,
+      id: `healthy_habits_${input.todayDateStr}`,
+      labelPt: "Hábitos Saudáveis Diários Concluídos",
       date: input.todayDateStr,
-      deltaEa: totalRestBonus,
-      category: "rest_supercompensation",
+      deltaEa: healthyHabitsBonusEa,
+      category: "habit_recharge",
     });
   }
 
-  const netSpentEa = Math.max(0, trainingDrainEa - recoveryRechargeEa);
-  const availableReserveEa = Math.max(0, personalCapacityEa - netSpentEa);
-  const usagePercent = Math.round(
-    (netSpentEa / Math.max(1, personalCapacityEa)) * 100
+  // Dias de Supercompensação Pós-Estímulo (dias de descanso que sucederam dias de treino na janela de 7 dias)
+  if (activeDaysLast7.size > 0 && activeDaysLast7.size < 7) {
+    const activeDatesSorted = Array.from(activeDaysLast7).sort();
+    const earliestActiveDate = activeDatesSorted[0];
+    const spanSinceEarliest = Math.min(
+      7,
+      daysBetween(earliestActiveDate, input.todayDateStr) + 1
+    );
+    const postStimulusRestDays = Math.max(
+      0,
+      Math.min(3, spanSinceEarliest - activeDaysLast7.size)
+    );
+    if (postStimulusRestDays > 0) {
+      const restBonusPerDay = Math.round(50 * recoveryVelocityMultiplier);
+      const totalRestBonus = postStimulusRestDays * restBonusPerDay;
+      recoveryRechargeEa += totalRestBonus;
+      ledgerEntries.push({
+        id: `supercomp_${input.todayDateStr}`,
+        labelPt: `Supercompensação Natural (${postStimulusRestDays}d de descanso)`,
+        date: input.todayDateStr,
+        deltaEa: totalRestBonus,
+        category: "rest_supercompensation",
+      });
+    }
+  }
+
+  const trainingDrainEa = residualAcuteDrainEa;
+  const rawNetSpentEa = Math.max(0, trainingDrainEa - recoveryRechargeEa);
+
+  // Curva Alostática Vital (Selye / McEwen): um organismo vivo NUNCA chega a 0 EA ("bateria morta").
+  // Até 55% da capacidade pessoal, o consumo é linear e sensível; acima disso, entra em amortecimento
+  // homeostático suave preservando um piso fisiológico vital mínimo de 22% da capacidade.
+  const linearThreshold = personalCapacityEa * 0.55;
+  const maxCompressibleSpan = personalCapacityEa * 0.23; // 55% + 23% = 78% máx de gasto (piso vital de 22% livre)
+  const netSpentEa =
+    rawNetSpentEa <= linearThreshold
+      ? Math.round(rawNetSpentEa)
+      : Math.round(
+          linearThreshold +
+            maxCompressibleSpan *
+              (1 -
+                Math.exp(
+                  -(rawNetSpentEa - linearThreshold) /
+                    Math.max(1, personalCapacityEa * 0.45)
+                ))
+        );
+
+  const availableReserveEa = Math.max(
+    Math.round(personalCapacityEa * 0.22),
+    personalCapacityEa - netSpentEa
   );
-  const reservePercent = clamp(100 - usagePercent, 0, 100);
+  const usagePercent = clamp(
+    Math.round((netSpentEa / Math.max(1, personalCapacityEa)) * 100),
+    0,
+    78
+  );
+  const reservePercent = clamp(100 - usagePercent, 22, 100);
+
+  // Construção do argumento real do dia a dia (Energy Context) para que o usuário se reconheça no número
+  const energyFactors: RealWorldEnergyFactor[] = [];
+  if (raw7DayDrainEa > 0) {
+    energyFactors.push({
+      id: "circadian_clearance",
+      labelPt: "Restauração pelo Sono & Tempo",
+      valuePt: `+${circadianClearedEa} EA (${circadianClearedPercent}% limpo)`,
+      explanationPt: `Dos ${raw7DayDrainEa} EA exigidos nos treinos dos últimos 7 dias, ${circadianClearedPercent}% já foram dissipados naturalmente pelas noites de sono.`,
+      tone: "positive",
+    });
+    energyFactors.push({
+      id: "residual_fatigue",
+      labelPt: "Fadiga Residual Ativa Hoje",
+      valuePt: `-${residualAcuteDrainEa} EA`,
+      explanationPt:
+        minDaysSinceWorkout === 0
+          ? "Estímulo registrado hoje: seu corpo está em janela aguda pós-esforço."
+          : minDaysSinceWorkout === 1
+            ? "Resíduo natural do treino de ontem após 1 noite de recuperação."
+            : `Apenas uma fração residual permanece após ${minDaysSinceWorkout} dias desde o último treino.`,
+      tone: residualAcuteDrainEa > personalCapacityEa * 0.45 ? "caution" : "neutral",
+    });
+  } else {
+    energyFactors.push({
+      id: "fresh_baseline",
+      labelPt: "Reserva Basal Plena",
+      valuePt: "100% livre",
+      explanationPt:
+        "Nenhum desgaste residual ativo nos últimos dias; sistemas energético e neuromuscular 100% recarregados.",
+      tone: "positive",
+    });
+  }
+
+  if (recoveryRechargeEa > 0) {
+    energyFactors.push({
+      id: "active_recharge",
+      labelPt: "Hábitos, Check-in & Supercompensação",
+      valuePt: `+${recoveryRechargeEa} EA`,
+      explanationPt:
+        "Energia devolvida diretamente por sono reportado, hábitos saudáveis diários e dias de supercompensação.",
+      tone: "positive",
+    });
+  }
+
+  const feelingHeadlinePt =
+    reservePercent >= 80
+      ? `Energia alta e musculatura pronta (${reservePercent}%)`
+      : reservePercent >= 62
+        ? `Boa disposição com memória muscular controlada (${reservePercent}%)`
+        : reservePercent >= 42
+          ? `Fadiga moderada em fase de assimilação (${reservePercent}%)`
+          : `Reserva em proteção regenerativa (${reservePercent}%)`;
+
+  const realLifeArgumentPt = (() => {
+    if (raw7DayDrainEa === 0) {
+      return `Sua reserva está em ${reservePercent}% (${availableReserveEa} EA) porque não há fadiga aguda acumulada nos últimos dias. No corpo, isso se traduz em mente desperta, articulações leves e prontidão total.`;
+    }
+    const timeText =
+      minDaysSinceWorkout === 0
+        ? "Como você treinou hoje, parte da sua energia foi investida no estímulo."
+        : minDaysSinceWorkout === 1
+          ? `Desde o treino de ontem, 1 noite de sono já limpou ${circadianClearedPercent}% do desgaste acumulado na semana.`
+          : `Com ${minDaysSinceWorkout} dias desde o último treino, seu ciclo circadiano já dissipou ${circadianClearedPercent}% do desgaste da semana (+${circadianClearedEa} EA).`;
+
+    const sensationText =
+      reservePercent >= 75
+        ? "No dia a dia, você deve notar musculatura firme, bom foco e disposição real para acelerar."
+        : reservePercent >= 58
+          ? "No corpo, é normal sentir leve presença muscular dos últimos dias, mas com energia sólida para treinar em bom ritmo."
+          : "No corpo, isso aparece como pernas ou ombros mais pesados — sinal de que o treino funcionou e está sendo absorvido.";
+
+    return `${timeText} Restam apenas ${netSpentEa} EA de custo líquido hoje. ${sensationText}`;
+  })();
+
+  const energyContext: RealWorldEnergyContext = {
+    raw7DayDrainEa,
+    circadianClearedEa,
+    circadianClearedPercent,
+    residualAcuteDrainEa,
+    daysSinceLastWorkout: minDaysSinceWorkout,
+    feelingHeadlinePt,
+    realLifeArgumentPt,
+    factors: energyFactors,
+  };
 
   // 5. Confiança do Modelo & Traços Aprendidos sobre o Usuário
   const observationsCount =
@@ -604,5 +815,6 @@ export function learnAdaptiveAthleteProfile(
     learnedTraits,
     ledgerEntries: ledgerEntries.slice(-8),
     todayLoggedAttitudes,
+    energyContext,
   };
 }

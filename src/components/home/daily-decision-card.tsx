@@ -390,19 +390,76 @@ export function DailyDecisionCard({
             />
           </div>
 
-          {/* ACORDEÃO EXPANSÍVEL: DETALHES, SUGESTÃO ATIVA E MICRO-HÁBITOS */}
+          {/* Linha Concisa de Realidade Fisiológica (Argumento imediato do dia a dia) */}
+          {adaptiveProfile?.energyContext && (
+            <div className="flex flex-wrap items-center justify-between gap-2 text-[11px] text-nevoa">
+              <span className="truncate">
+                <strong className="text-white/90 font-semibold">
+                  {adaptiveProfile.energyContext.feelingHeadlinePt}:
+                </strong>{" "}
+                {adaptiveProfile.energyContext.raw7DayDrainEa > 0
+                  ? `${adaptiveProfile.energyContext.circadianClearedPercent}% do esforço da semana já limpo pelo sono (+${adaptiveProfile.energyContext.circadianClearedEa} EA)`
+                  : "Sistemas energético e neuromuscular 100% recarregados"}
+              </span>
+              <button
+                type="button"
+                onClick={() => setIsExpanded((prev) => !prev)}
+                className="text-[10px] font-mono text-lima hover:underline cursor-pointer shrink-0"
+              >
+                {isExpanded ? "Ocultar porquê" : "Entender cálculo"}
+              </button>
+            </div>
+          )}
+
+          {/* ACORDEÃO EXPANSÍVEL: ARGUMENTO REAL DO DIA A DIA, PILARES DO CÁLCULO E SUGESTÃO ATIVA */}
           {isExpanded && (
             <div className="pt-2.5 border-t border-white/10 flex flex-col gap-2.5 animate-in fade-in duration-200">
-              <div className="flex items-center justify-between text-[11px] font-mono text-nevoa">
-                <span>
-                  Consumo em treinos:{" "}
-                  <strong className="text-red-300">-{drainEa} EA</strong>
-                </span>
-                <span>
-                  Recarga com hábitos:{" "}
-                  <strong className="text-lima">+{rechargeEa} EA</strong>
-                </span>
-              </div>
+              {adaptiveProfile?.energyContext ? (
+                <div className="rounded-xl border border-white/10 bg-black/30 p-3 flex flex-col gap-2.5">
+                  <p className="text-xs text-white/90 leading-relaxed">
+                    {adaptiveProfile.energyContext.realLifeArgumentPt}
+                  </p>
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 pt-1.5 border-t border-white/10">
+                    {adaptiveProfile.energyContext.factors.map((f) => (
+                      <div
+                        key={f.id}
+                        className="rounded-lg bg-white/[0.04] border border-white/8 px-2.5 py-2 flex flex-col gap-0.5"
+                      >
+                        <div className="flex items-center justify-between gap-1">
+                          <span className="text-[10px] font-mono text-nevoa truncate">
+                            {f.labelPt}
+                          </span>
+                          <span
+                            className={`text-[10px] font-mono font-bold shrink-0 ${
+                              f.tone === "positive"
+                                ? "text-lima"
+                                : f.tone === "caution"
+                                  ? "text-amber-300"
+                                  : "text-white"
+                            }`}
+                          >
+                            {f.valuePt}
+                          </span>
+                        </div>
+                        <p className="text-[10px] text-nevoa/80 leading-snug">
+                          {f.explanationPt}
+                        </p>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ) : (
+                <div className="flex items-center justify-between text-[11px] font-mono text-nevoa">
+                  <span>
+                    Fadiga residual ativa:{" "}
+                    <strong className="text-red-300">-{drainEa} EA</strong>
+                  </span>
+                  <span>
+                    Recarga com hábitos:{" "}
+                    <strong className="text-lima">+{rechargeEa} EA</strong>
+                  </span>
+                </div>
+              )}
 
               <div className="rounded-xl border border-white/10 bg-black/25 p-3 flex flex-col gap-1.5">
                 <div className="flex items-center justify-between gap-2">

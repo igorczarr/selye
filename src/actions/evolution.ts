@@ -3,7 +3,7 @@
 import { connection } from "next/server";
 import { db } from "@/db";
 import * as schema from "@/db/schema";
-import { eq, desc, inArray } from "drizzle-orm";
+import { eq, desc, inArray, and } from "drizzle-orm";
 import { getOrCreateDemoUser } from "./workout";
 import {
   aggregateDailyLoads,
@@ -132,6 +132,7 @@ export async function getEvolutionData(): Promise<EvolutionData> {
     userSportRows,
     kpiMeasurementRows,
     activePlanningGoalRows,
+    dailyHabitLogRows,
   ] = await Promise.all([
     db
       .select()
@@ -189,6 +190,26 @@ export async function getEvolutionData(): Promise<EvolutionData> {
       .where(eq(schema.planningGoals.userId, user.id))
       .orderBy(desc(schema.planningGoals.createdAt))
       .limit(5),
+    db
+      .select({
+        localDate: schema.dailyHabitLogs.localDate,
+        completed: schema.dailyHabitLogs.completed,
+        title: schema.userHealthyHabits.title,
+        eaImpact: schema.userHealthyHabits.eaImpact,
+      })
+      .from(schema.dailyHabitLogs)
+      .innerJoin(
+        schema.userHealthyHabits,
+        eq(schema.dailyHabitLogs.habitId, schema.userHealthyHabits.id)
+      )
+      .where(
+        and(
+          eq(schema.dailyHabitLogs.userId, user.id),
+          eq(schema.dailyHabitLogs.completed, true)
+        )
+      )
+      .limit(120)
+      .catch(() => []),
   ]);
 
   const completedWorkouts = workouts.filter((w) => w.status === "completed");
@@ -198,16 +219,15 @@ export async function getEvolutionData(): Promise<EvolutionData> {
 
   // 1. Carga fisiológica (ACWR + 28d)
   const sessionLoadInputs = last28Completed.map((s) => {
-    const durationMinutes = s.finishedAt
-      ? Math.max(
-          15,
-          Math.round(
-            (new Date(s.finishedAt).getTime() -
-              new Date(s.startedAt).getTime()) /
-              60000
-          )
+    const rawElapsedMin = s.finishedAt
+      ? Math.round(
+          (new Date(s.finishedAt).getTime() -
+            new Date(s.startedAt).getTime() -
+            (s.accumulatedPausedSeconds || 0) * 1000) /
+            60000
         )
       : 45;
+    const durationMinutes = Math.min(180, Math.max(15, rawElapsedMin));
     return {
       date: new Date(s.startedAt).toISOString().split("T")[0],
       durationMinutes,
@@ -333,6 +353,11 @@ export async function getEvolutionData(): Promise<EvolutionData> {
     })),
     checkinsLast28Days,
     recoveryAttitudesLast7Days,
+    dailyHabitRechargesLast7Days: dailyHabitLogRows.map((r) => ({
+      localDate: String(r.localDate).slice(0, 10),
+      labelPt: r.title,
+      eaImpact: r.eaImpact || 40,
+    })),
     todayDateStr: todayStr,
   });
 

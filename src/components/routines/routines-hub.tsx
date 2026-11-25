@@ -16,6 +16,7 @@ import {
 } from "@/lib/routine-metrics";
 import { ExerciseLink } from "@/components/catalog/exercise-link";
 import { ModalPortal } from "@/components/ui/modal-portal";
+import { PostWorkoutPhotoModal } from "@/components/workout/post-workout-photo-modal";
 import {
   MODALITY_REGISTRY,
   type CoreModalityCode,
@@ -48,6 +49,7 @@ import {
   Zap,
   ArrowRightLeft,
   X,
+  Camera,
 } from "lucide-react";
 
 const MODALITY_LABELS: Record<string, string> = {
@@ -174,6 +176,7 @@ export function RoutinesHub({
   routines,
   activeSession,
   todayCompletedSessions = [],
+  activeDaysInYear = 1,
   athletePrimaryModality = "strength",
   experienceLevel = "intermediate",
 }: {
@@ -192,10 +195,12 @@ export function RoutinesHub({
     rpeSession: number | null;
     finishedAt: string;
   }[];
+  activeDaysInYear?: number;
   athletePrimaryModality?: CoreModalityCode;
   experienceLevel?: ExperienceLevel;
 }) {
   const router = useRouter();
+  const [isPhotoModalOpen, setIsPhotoModalOpen] = useState(false);
   const findCompletedForRoutine = (title?: string | null) => {
     if (!title) return undefined;
     const norm = title.trim().toLowerCase();
@@ -537,11 +542,15 @@ export function RoutinesHub({
             </div>
 
             {isHeroDone ? (
-              <div className="flex items-center gap-2 shrink-0">
-                <span className="h-11 px-4 rounded-xl bg-emerald-500/15 border border-emerald-500/35 text-emerald-400 text-xs font-mono font-bold inline-flex items-center justify-center gap-1.5 select-none">
-                  <CheckCircle2 size={15} />
-                  <span>Concluído hoje</span>
-                </span>
+              <div className="flex items-center gap-2 shrink-0 flex-wrap">
+                <button
+                  type="button"
+                  onClick={() => setIsPhotoModalOpen(true)}
+                  className="btn btn-primary h-11 px-4 text-xs font-mono font-bold shrink-0 inline-flex items-center justify-center gap-1.5 shadow-sm"
+                >
+                  <Camera size={14} />
+                  <span>Foto Instagram</span>
+                </button>
                 <button
                   type="button"
                   disabled={isPending}
@@ -1448,6 +1457,27 @@ export function RoutinesHub({
           </div>
         </div>
       </ModalPortal>
+
+      {/* Modal de Foto Pós-Treino para Instagram */}
+      <PostWorkoutPhotoModal
+        open={isPhotoModalOpen}
+        onClose={() => setIsPhotoModalOpen(false)}
+        workoutTitle={
+          todayCompletedSessions[0]?.title ||
+          heroRoutine?.title ||
+          "Treino Concluído"
+        }
+        modalityCode={
+          todayCompletedSessions[0]?.modalityCode ||
+          heroRoutine?.modalityCode ||
+          "strength"
+        }
+        durationMinutes={
+          todayCompletedSessions[0]?.durationMinutes || heroEstMin || 45
+        }
+        activeDaysInYear={Math.max(1, activeDaysInYear)}
+        finishedAt={todayCompletedSessions[0]?.finishedAt}
+      />
     </div>
   );
 }

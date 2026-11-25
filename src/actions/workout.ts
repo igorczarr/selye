@@ -262,35 +262,61 @@ export async function getDashboardData() {
 
   const recentSessions = completedSessions.slice(0, 5);
 
-  // 5. Histórico de eventos, metas, perfil e telemetria biométrica (check-ins, atitudes +EA e escudo semanal)
-  const [activities, goals, savedStreaks, userProfileRows, bodyMetricsRows] =
-    await Promise.all([
-      db
-        .select()
-        .from(schema.activityEvents)
-        .where(eq(schema.activityEvents.userId, user.id)),
-      db
-        .select()
-        .from(schema.weeklyGoals)
-        .where(eq(schema.weeklyGoals.userId, user.id))
-        .limit(1),
-      db
-        .select()
-        .from(schema.streaks)
-        .where(eq(schema.streaks.userId, user.id))
-        .limit(1),
-      db
-        .select()
-        .from(schema.profiles)
-        .where(eq(schema.profiles.userId, user.id))
-        .limit(1),
-      db
-        .select()
-        .from(schema.bodyMetrics)
-        .where(eq(schema.bodyMetrics.userId, user.id))
-        .orderBy(desc(schema.bodyMetrics.recordedAt))
-        .limit(60),
-    ]);
+  // 5. Histórico de eventos, metas, perfil, telemetria biométrica e hábitos saudáveis diários
+  const [
+    activities,
+    goals,
+    savedStreaks,
+    userProfileRows,
+    bodyMetricsRows,
+    dailyHabitLogRows,
+  ] = await Promise.all([
+    db
+      .select()
+      .from(schema.activityEvents)
+      .where(eq(schema.activityEvents.userId, user.id)),
+    db
+      .select()
+      .from(schema.weeklyGoals)
+      .where(eq(schema.weeklyGoals.userId, user.id))
+      .limit(1),
+    db
+      .select()
+      .from(schema.streaks)
+      .where(eq(schema.streaks.userId, user.id))
+      .limit(1),
+    db
+      .select()
+      .from(schema.profiles)
+      .where(eq(schema.profiles.userId, user.id))
+      .limit(1),
+    db
+      .select()
+      .from(schema.bodyMetrics)
+      .where(eq(schema.bodyMetrics.userId, user.id))
+      .orderBy(desc(schema.bodyMetrics.recordedAt))
+      .limit(60),
+    db
+      .select({
+        localDate: schema.dailyHabitLogs.localDate,
+        completed: schema.dailyHabitLogs.completed,
+        title: schema.userHealthyHabits.title,
+        eaImpact: schema.userHealthyHabits.eaImpact,
+      })
+      .from(schema.dailyHabitLogs)
+      .innerJoin(
+        schema.userHealthyHabits,
+        eq(schema.dailyHabitLogs.habitId, schema.userHealthyHabits.id)
+      )
+      .where(
+        and(
+          eq(schema.dailyHabitLogs.userId, user.id),
+          eq(schema.dailyHabitLogs.completed, true)
+        )
+      )
+      .limit(120)
+      .catch(() => []),
+  ]);
 
   const targetDaysPerWeek = goals[0]?.targetDaysPerWeek || 4;
   const currentIsoWeekStart = getIsoWeekStart(today);
@@ -398,21 +424,20 @@ export async function getDashboardData() {
 
   // 8. Resumo assertivo de Performance Multimodal (ACWR + Orçamento de Recuperação Semanal + 7 dias)
   const sessionLoadInputs = sessionsLast28.map((s) => {
-    const durationMinutes = s.finishedAt
-      ? Math.max(
-          15,
-          Math.round(
-            (new Date(s.finishedAt).getTime() -
-              new Date(s.startedAt).getTime()) /
-              60000
-          )
+    const rawElapsedMin = s.finishedAt
+      ? Math.round(
+          (new Date(s.finishedAt).getTime() -
+            new Date(s.startedAt).getTime() -
+            (s.accumulatedPausedSeconds || 0) * 1000) /
+            60000
         )
       : 45;
+    const durationMinutes = Math.min(180, Math.max(15, rawElapsedMin));
     const volumeKg = volumeBySessionId.get(s.id) || 0;
     const distanceKm = distanceBySessionId.get(s.id) || 0;
     return {
       id: s.id,
-      date: new Date(s.startedAt).toISOString().split("T")[0],
+      date: getLocalTodayDateStr(new Date(s.startedAt)),
       durationMinutes,
       rpe: s.rpeSession || 7,
       modalityCode: s.modalityCode,
@@ -526,6 +551,11 @@ export async function getDashboardData() {
     })),
     checkinsLast28Days,
     recoveryAttitudesLast7Days,
+    dailyHabitRechargesLast7Days: dailyHabitLogRows.map((r) => ({
+      localDate: String(r.localDate).slice(0, 10),
+      labelPt: r.title,
+      eaImpact: r.eaImpact || 40,
+    })),
     todayDateStr: today,
   });
 

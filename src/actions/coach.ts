@@ -5,6 +5,7 @@ import * as schema from "@/db/schema";
 import { eq, desc, and } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { getOrCreateDemoUser } from "./workout";
+import { getUserHealthyHabitsSnapshot } from "./habits";
 import { dispatchSmartNotification } from "./notifications";
 import { assertActionRole } from "@/lib/auth-role";
 
@@ -66,12 +67,17 @@ export async function getCoachDashboardData() {
       )
     );
 
+  const primaryAthleteId = assignments[0]?.athleteId || coachUser.id;
+  const primaryAthleteHabits = await getUserHealthyHabitsSnapshot(primaryAthleteId);
+
   return {
     coachUser,
     coachProfile,
     assignments,
     programs,
     memberships,
+    primaryAthleteId,
+    primaryAthleteHabits,
     metrics: {
       activeAthletesCount: assignments.filter((a) => a.status === "active").length,
       publishedProgramsCount: programs.length,

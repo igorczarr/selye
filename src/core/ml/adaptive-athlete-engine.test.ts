@@ -155,4 +155,55 @@ describe("Phase 14 - Individual Machine Learning Adaptive Athlete Engine (EA)", 
       `Acordar e registrar o check-in matinal deve recarregar a reserva (${beforeCheckin.availableReserveEa} -> ${afterNormalCheckin.availableReserveEa}), nunca derrubá-la`
     );
   });
+
+  test("Normalização fisiológica: meia-vida circadiana dissipa fadiga de dias passados e jamais zera a bateria (piso vital >= 22%)", () => {
+    // Cenário real: semana intensa (Sexta + Sábado + Domingo 180 min + Segunda), avaliado na Quarta-feira (2026-11-25)
+    const wednesdayProfile = learnAdaptiveAthleteProfile({
+      experienceLevel: "intermediate",
+      targetDaysPerWeek: 4,
+      currentWeeklyStreak: 2,
+      sessionsLast28Days: [
+        { date: "2026-11-20", modalityCode: "beach_volleyball", durationMinutes: 70, rpe: 5, rawLoadEa: 403 },
+        { date: "2026-11-21", modalityCode: "strength", durationMinutes: 90, rpe: 7, rawLoadEa: 630 },
+        { date: "2026-11-21", modalityCode: "functional", durationMinutes: 30, rpe: 5, rawLoadEa: 150 },
+        { date: "2026-11-23", modalityCode: "functional", durationMinutes: 180, rpe: 7, rawLoadEa: 1323 },
+        { date: "2026-11-24", modalityCode: "functional", durationMinutes: 90, rpe: 5, rawLoadEa: 450 },
+      ],
+      checkinsLast28Days: [],
+      recoveryAttitudesLast7Days: [],
+      todayDateStr: "2026-11-25",
+    });
+
+    assert.ok(
+      wednesdayProfile.reservePercent >= 55 && wednesdayProfile.reservePercent <= 88,
+      `Na quarta-feira após noites de sono, a bateria deve refletir recuperação real (${wednesdayProfile.reservePercent}%), jamais ficar zerada`
+    );
+    assert.ok(
+      wednesdayProfile.energyContext.circadianClearedPercent >= 65,
+      `As noites de sono devem ter dissipado a maior parte da carga da semana (${wednesdayProfile.energyContext.circadianClearedPercent}%)`
+    );
+    assert.ok(
+      wednesdayProfile.energyContext.realLifeArgumentPt.length > 30,
+      "Deve fornecer argumento claro do dia a dia explicando o saldo de energia"
+    );
+
+    // Cenário extremo no próprio dia: mesmo após carga aguda massiva hoje, nunca zera (pessoa viva >= 22%)
+    const extremeSameDay = learnAdaptiveAthleteProfile({
+      experienceLevel: "intermediate",
+      targetDaysPerWeek: 4,
+      currentWeeklyStreak: 1,
+      sessionsLast28Days: [
+        { date: "2026-11-25", modalityCode: "beach_volleyball", durationMinutes: 120, rpe: 9, rawLoadEa: 1240 },
+        { date: "2026-11-25", modalityCode: "strength", durationMinutes: 90, rpe: 9, rawLoadEa: 810 },
+      ],
+      checkinsLast28Days: [],
+      recoveryAttitudesLast7Days: [],
+      todayDateStr: "2026-11-25",
+    });
+
+    assert.ok(
+      extremeSameDay.reservePercent >= 22 && extremeSameDay.availableReserveEa > 300,
+      `Mesmo em sobrecarga extrema no mesmo dia, a bateria nunca deve zerar (${extremeSameDay.reservePercent}% · ${extremeSameDay.availableReserveEa} EA)`
+    );
+  });
 });

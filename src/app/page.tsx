@@ -4,18 +4,21 @@ import { ArrowUpRight, Sparkles } from "lucide-react";
 import { Navbar } from "@/components/navigation/navbar";
 import { getDashboardData } from "@/actions/workout";
 import { getActivePlanningSnapshot } from "@/actions/planning";
+import { getUserHealthyHabitsSnapshot } from "@/actions/habits";
 import { WorkoutRunner } from "@/components/workout/workout-runner";
 import { HomeEditorialHeader } from "@/components/home/home-editorial-header";
 import { DailyDecisionCard } from "@/components/home/daily-decision-card";
 import { WelcomeAutonomyGuide } from "@/components/home/welcome-autonomy-guide";
 import { TodayPlanWidget } from "@/components/home/today-plan-widget";
+import { DailyHabitsWidget } from "@/components/home/daily-habits-widget";
 
 export const instant = false;
 
 async function DashboardContent() {
-  const [data, planningSnapshot] = await Promise.all([
+  const [data, planningSnapshot, healthyHabitsSnapshot] = await Promise.all([
     getDashboardData(),
     getActivePlanningSnapshot(),
+    getUserHealthyHabitsSnapshot(),
   ]);
   const { stats, dailyEditorial, performanceSummary } = data;
   const { adaptiveProfile, dailyDecision, todayCheckin } = performanceSummary;
@@ -89,6 +92,7 @@ async function DashboardContent() {
           initialSession={data.activeSession}
           sessionExercises={data.activeSessionExercises}
           todayCompletedSessions={data.todayCompletedSessions}
+          activeDaysInYear={stats.activeDaysInYear}
           routines={data.routines.map((r) => ({
             id: r.id,
             title: r.title,
@@ -106,7 +110,10 @@ async function DashboardContent() {
           }))}
         />
 
-        {/* 3. CONTEXTO DE CICLO: Seu Passo de Hoje no Calendário do Seu Corpo */}
+        {/* 3. HÁBITOS SAUDÁVEIS DIÁRIOS: Marcação rápida e acompanhamento de impacto do Selye */}
+        <DailyHabitsWidget snapshot={healthyHabitsSnapshot} />
+
+        {/* 4. CONTEXTO DE CICLO: Seu Passo de Hoje no Calendário do Seu Corpo */}
         <TodayPlanWidget snapshot={planningSnapshot} />
       </div>
     </div>

@@ -18,6 +18,7 @@ import { getWeekdayLabelPt, jsDayToMondayIndex } from "@/lib/week";
 import { getModalityProfile } from "@/core/performance/training-load";
 import { ExerciseLink } from "@/components/catalog/exercise-link";
 import { ModalPortal } from "@/components/ui/modal-portal";
+import { PostWorkoutPhotoModal } from "@/components/workout/post-workout-photo-modal";
 import {
   Play,
   Check,
@@ -35,6 +36,7 @@ import {
   ChevronUp,
   LayoutGrid,
   Sparkles,
+  Camera,
 } from "lucide-react";
 
 interface SetLogItem {
@@ -87,6 +89,7 @@ interface WorkoutRunnerProps {
   sessionExercises: SessionExerciseItem[];
   routines: RoutineCardData[];
   todayCompletedSessions?: TodayCompletedSessionSummary[];
+  activeDaysInYear?: number;
 }
 
 export function WorkoutRunner({
@@ -94,6 +97,7 @@ export function WorkoutRunner({
   sessionExercises,
   routines,
   todayCompletedSessions = [],
+  activeDaysInYear = 1,
 }: WorkoutRunnerProps) {
   const router = useRouter();
   const [session, setSession] = useState<any>(initialSession);
@@ -104,6 +108,7 @@ export function WorkoutRunner({
   const [lastCompletedTime, setLastCompletedTime] = useState<Date | null>(null);
   const [sessionRpe, setSessionRpe] = useState<number>(8);
   const [isFinishedBannerOpen, setIsFinishedBannerOpen] = useState(false);
+  const [isPhotoModalOpen, setIsPhotoModalOpen] = useState(false);
   const [localCompletedToday, setLocalCompletedToday] = useState<
     TodayCompletedSessionSummary[]
   >([]);
@@ -494,10 +499,14 @@ export function WorkoutRunner({
 
                 {isHeroDone ? (
                   <>
-                    <span className="h-9 px-3.5 rounded-lg bg-emerald-500/15 border border-emerald-500/35 text-emerald-400 font-mono font-bold text-xs inline-flex items-center gap-1.5 select-none">
-                      <Check size={14} strokeWidth={2.8} />
-                      <span>Concluído</span>
-                    </span>
+                    <button
+                      type="button"
+                      onClick={() => setIsPhotoModalOpen(true)}
+                      className="h-9 px-3.5 rounded-lg bg-lima hover:brightness-105 text-grafite font-mono font-bold text-xs inline-flex items-center gap-1.5 shadow-sm transition-all cursor-pointer"
+                    >
+                      <Camera size={13} />
+                      <span>Foto Instagram</span>
+                    </button>
                     <button
                       type="button"
                       disabled={isPending}
@@ -628,19 +637,48 @@ export function WorkoutRunner({
         {isFinishedBannerOpen && (
           <div
             role="status"
-            className="p-3.5 rounded-xl bg-lima/20 border border-lima flex items-start gap-2.5 text-xs text-foreground"
+            className="p-3.5 rounded-xl bg-lima/20 border border-lima flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs text-foreground"
           >
-            <CheckCircle2 size={16} className="text-profundo mt-0.5 shrink-0" />
-            <div>
-              <span className="font-mono font-bold text-accent-text block">
-                Sessão Concluída (Nota {sessionRpe}/10)
-              </span>
-              <span className="text-muted text-[11px]">
-                Sua evolução e bateria do corpo foram atualizadas.
-              </span>
+            <div className="flex items-start gap-2.5">
+              <CheckCircle2 size={16} className="text-profundo mt-0.5 shrink-0" />
+              <div>
+                <span className="font-mono font-bold text-accent-text block">
+                  Sessão Concluída (Nota {sessionRpe}/10)
+                </span>
+                <span className="text-muted text-[11px]">
+                  Sua evolução e bateria do corpo foram atualizadas.
+                </span>
+              </div>
             </div>
+            <button
+              type="button"
+              onClick={() => setIsPhotoModalOpen(true)}
+              className="btn btn-primary h-8 px-3 text-xs font-mono font-bold shrink-0 inline-flex items-center gap-1.5"
+            >
+              <Camera size={13} />
+              <span>Foto Pós-Treino (Instagram)</span>
+            </button>
           </div>
         )}
+
+        {/* MODAL DE FOTO PÓS-TREINO PARA INSTAGRAM */}
+        <PostWorkoutPhotoModal
+          open={isPhotoModalOpen}
+          onClose={() => setIsPhotoModalOpen(false)}
+          workoutTitle={
+            completedHeroSession?.title ||
+            activeRoutine?.title ||
+            "Treino Concluído"
+          }
+          modalityCode={
+            completedHeroSession?.modalityCode ||
+            activeRoutine?.modalityCode ||
+            "strength"
+          }
+          durationMinutes={completedHeroSession?.durationMinutes || 45}
+          activeDaysInYear={Math.max(1, activeDaysInYear)}
+          finishedAt={completedHeroSession?.finishedAt}
+        />
 
         {/* MODAL PARA TROCAR FICHA (VIA MODALPORTAL) */}
         <ModalPortal

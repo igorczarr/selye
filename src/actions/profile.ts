@@ -6,6 +6,7 @@ import { eq, desc } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { getOrCreateDemoUser, getDashboardData } from "./workout";
 import { getUserAchievements, getAchievementsCatalog } from "./achievements";
+import { getUserHealthyHabitsSnapshot } from "./habits";
 import {
   calibrateInitialEaFromOnboarding,
   type EaOnboardingCalibrationResult,
@@ -65,8 +66,12 @@ export async function getProfileData() {
     .orderBy(desc(schema.weeklyGoals.createdAt))
     .limit(1);
 
-  const userAchievements = await getUserAchievements(user.id);
-  const achievementsCatalog = await getAchievementsCatalog();
+  const [userAchievements, achievementsCatalog, healthyHabits] =
+    await Promise.all([
+      getUserAchievements(user.id),
+      getAchievementsCatalog(),
+      getUserHealthyHabitsSnapshot(user.id),
+    ]);
 
   let eaCondition = {
     reservePercent: 82,
@@ -100,6 +105,7 @@ export async function getProfileData() {
     userAchievements,
     achievementsCatalog,
     eaCondition,
+    healthyHabits,
   };
 }
 
