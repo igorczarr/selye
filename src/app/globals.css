@@ -469,6 +469,262 @@ body {
   animation: arrow-float 2.2s ease-in-out infinite;
 }
 
+/* ---------- Autenticação: Palco Antigravity & Caixa Central Única ---------- */
+.selye-auth-viewport {
+  background-color: var(--background);
+  background-image: radial-gradient(
+    640px 440px at 50% 50%,
+    color-mix(in srgb, var(--surface) 75%, transparent),
+    transparent 74%
+  );
+}
+
+[data-theme="dark"] .selye-auth-viewport {
+  background-color: #0a0f0e;
+  background-image: radial-gradient(
+    620px 420px at 50% 48%,
+    rgb(199 227 91 / 0.045),
+    transparent 72%
+  );
+}
+
+.selye-auth-card {
+  position: relative;
+  width: 100%;
+  padding: 28px 24px;
+  border-radius: 22px;
+  background: color-mix(in srgb, var(--surface) 94%, transparent);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid color-mix(in srgb, var(--border) 92%, var(--foreground) 8%);
+  box-shadow:
+    0 1px 2px rgb(15 22 20 / 0.04),
+    0 20px 48px -16px rgb(15 22 20 / 0.14),
+    inset 0 1px 0 rgb(255 255 255 / 0.92);
+}
+
+@media (min-width: 640px) {
+  .selye-auth-card {
+    padding: 36px 34px;
+  }
+}
+
+[data-theme="dark"] .selye-auth-card {
+  background: rgb(19 27 24 / 0.92);
+  border-color: rgb(255 255 255 / 0.09);
+  box-shadow:
+    0 24px 60px -16px rgb(0 0 0 / 0.72),
+    0 4px 16px -4px rgb(0 0 0 / 0.45),
+    inset 0 1px 0 rgb(255 255 255 / 0.08);
+}
+
+.selye-auth-card::before {
+  content: "";
+  position: absolute;
+  top: -1px;
+  left: 18%;
+  right: 18%;
+  height: 1px;
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    color-mix(in srgb, var(--lima) 65%, transparent) 50%,
+    transparent 100%
+  );
+  pointer-events: none;
+}
+
+/* Sobrescritas sem camada (@layer) para vencer o CSS em runtime do Clerk no Tailwind v4 */
+.selye-auth-card .cl-rootBox,
+.selye-auth-card .cl-cardBox {
+  width: 100% !important;
+  max-width: 100% !important;
+  margin: 0 !important;
+  box-shadow: none !important;
+  border: 0 !important;
+  background: transparent !important;
+  border-radius: 0 !important;
+}
+
+.selye-auth-card .cl-card {
+  width: 100% !important;
+  max-width: 100% !important;
+  padding: 0 !important;
+  margin: 0 !important;
+  box-shadow: none !important;
+  border: 0 !important;
+  background: transparent !important;
+  border-radius: 0 !important;
+  gap: 20px !important;
+}
+
+.selye-auth-card .cl-logoBox,
+.selye-auth-card .cl-footer,
+.selye-auth-card .cl-footerAction {
+  display: none !important;
+}
+
+.selye-auth-card .cl-header {
+  align-items: center !important;
+  text-align: center !important;
+  gap: 6px !important;
+  padding: 0 !important;
+}
+
+.selye-auth-card .cl-headerTitle {
+  font-family: var(--font-display) !important;
+  font-size: 21px !important;
+  font-weight: 700 !important;
+  letter-spacing: -0.026em !important;
+  line-height: 1.2 !important;
+  color: var(--foreground) !important;
+}
+
+.selye-auth-card .cl-headerSubtitle {
+  font-family: var(--font-sans) !important;
+  font-size: 13.5px !important;
+  font-weight: 400 !important;
+  line-height: 1.45 !important;
+  color: var(--muted) !important;
+}
+
+.selye-auth-card .cl-socialButtonsBlockButton {
+  height: 44px !important;
+  border-radius: 12px !important;
+  border: 1px solid var(--border) !important;
+  background: var(--surface) !important;
+  color: var(--foreground) !important;
+  box-shadow: 0 1px 2px rgb(15 22 20 / 0.03) !important;
+  transition:
+    background-color 160ms ease,
+    border-color 160ms ease,
+    transform 160ms ease !important;
+}
+
+.selye-auth-card .cl-socialButtonsBlockButton:hover {
+  background: color-mix(in srgb, var(--foreground) 4%, var(--surface)) !important;
+  border-color: color-mix(in srgb, var(--border) 60%, var(--foreground) 40%) !important;
+}
+
+.selye-auth-card .cl-formFieldInput {
+  height: 44px !important;
+  border-radius: 12px !important;
+  border: 1px solid var(--border) !important;
+  background: var(--surface) !important;
+  color: var(--foreground) !important;
+  font-size: 14px !important;
+  padding-inline: 14px !important;
+  box-shadow: none !important;
+  transition:
+    border-color 160ms ease,
+    box-shadow 160ms ease !important;
+}
+
+.selye-auth-card .cl-formFieldInput:focus {
+  outline: none !important;
+  border-color: var(--profundo) !important;
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--lima) 38%, transparent) !important;
+}
+
+[data-theme="dark"] .selye-auth-card .cl-formFieldInput:focus {
+  border-color: var(--lima) !important;
+  box-shadow: 0 0 0 3px rgb(199 227 91 / 0.2) !important;
+}
+
+/* Botão primário executivo: Grafite em superfície clara, Lima Sinal em superfície escura */
+.selye-auth-card .selye-clerk-primary-btn,
+.selye-auth-card .cl-formButtonPrimary {
+  height: 44px !important;
+  border-radius: 12px !important;
+  background: linear-gradient(180deg, #24312d 0%, var(--grafite) 100%) !important;
+  color: var(--osso) !important;
+  border: 1px solid rgb(255 255 255 / 0.1) !important;
+  box-shadow:
+    0 8px 20px -8px rgb(15 22 20 / 0.45),
+    inset 0 1px 0 rgb(255 255 255 / 0.14) !important;
+}
+
+.selye-auth-card .cl-formButtonPrimary:hover:not(:disabled) {
+  background: linear-gradient(180deg, #2b3a35 0%, var(--noite) 100%) !important;
+  transform: translateY(-1px);
+}
+
+[data-theme="dark"] .selye-auth-card .selye-clerk-primary-btn,
+[data-theme="dark"] .selye-auth-card .cl-formButtonPrimary {
+  background: linear-gradient(180deg, var(--lima-bright) 0%, var(--lima) 100%) !important;
+  color: var(--grafite) !important;
+  border: 1px solid rgb(199 227 91 / 0.65) !important;
+  box-shadow:
+    0 8px 24px -6px rgb(199 227 91 / 0.32),
+    inset 0 1px 0 rgb(255 255 255 / 0.45) !important;
+}
+
+[data-theme="dark"] .selye-auth-card .cl-formButtonPrimary:hover:not(:disabled) {
+  filter: brightness(1.04);
+}
+
+/* Coreografia SVG do Pre-loader Selye × Antigravity */
+@keyframes auth-stroke-draw {
+  0% {
+    stroke-dashoffset: 1;
+    opacity: 0.25;
+  }
+  100% {
+    stroke-dashoffset: 0;
+    opacity: 1;
+  }
+}
+
+@keyframes auth-dot-pop {
+  0% {
+    opacity: 0;
+    transform: scale(0.35);
+  }
+  70% {
+    opacity: 1;
+    transform: scale(1.14);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes auth-wordmark-fade {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.auth-preloader-stroke-1 {
+  stroke-dasharray: 1;
+  stroke-dashoffset: 1;
+  animation: auth-stroke-draw 0.62s var(--ease-out-expo) 0.06s forwards;
+}
+
+.auth-preloader-stroke-2 {
+  stroke-dasharray: 1;
+  stroke-dashoffset: 1;
+  animation: auth-stroke-draw 0.62s var(--ease-out-expo) 0.28s forwards;
+}
+
+.auth-preloader-dot {
+  transform-box: fill-box;
+  transform-origin: center;
+  opacity: 0;
+  animation: auth-dot-pop 0.46s var(--ease-out-expo) 0.22s forwards;
+}
+
+.auth-preloader-wordmark {
+  opacity: 0;
+  animation: auth-wordmark-fade 0.52s var(--ease-out-expo) 0.36s forwards;
+}
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,
